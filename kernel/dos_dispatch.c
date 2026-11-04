@@ -247,3 +247,61 @@ static void fn_resize(struct regs *r)
 		ret_ok(r);
 	}
 }
+
+/* ---- 4Eh/4Fh: FindFirst / FindNext ----
+ * DTA layout: 00-14h reserved (we keep the search state there),
+ * 15h attr, 16h time, 18h date, 1Ah size, 1Eh ASCIIZ name. */
+#define DTA_PAT   0	/* 11 bytes: search pattern */
+#define DTA_MASK  11	/* attribute mask */
+#define DTA_INDEX 12	/* u16: next directory slot */
+
+static void find_common(struct regs *r, u8 *pat, u8 mask, u16 index)
+{
+	struct dirent de;
+	u8 rec[0x2B];
+	char name[13];
+	int e = dir_search(pat, mask, &index, &de);
+
+	if (e < 0) {
+		ret_err(r, -e);
+		return;
+	}
+	memset(rec, 0, sizeof(rec));
+	memcpy(rec + DTA_PAT, pat, 11);
+	rec[DTA_MASK] = mask;
+	rec[DTA_INDEX] = (u8)index;
+	rec[DTA_INDEX + 1] = (u8)(index >> 8);
+	rec[0x15] = de.attr;
+	rec[0x16] = (u8)de.time;  rec[0x17] = (u8)(de.time >> 8);
+	rec[0x18] = (u8)de.date;  rec[0x19] = (u8)(de.date >> 8);
+	rec[0x1A] = (u8)de.size;  rec[0x1B] = (u8)(de.size >> 8);
+	rec[0x1C] = (u8)(de.size >> 16);  rec[0x1D] = (u8)(de.size >> 24);
+	fcb_to_name(de.name, name);
+	memcpy(rec + 0x1E, name, strlen(name) + 1);
+	far_copy_to(dta_seg, dta_off, rec, sizeof(rec));
+	ret_ok(r);
+}
+
+static void fn_find_first(struct regs *r)
+{
+	char path[80];
+	u8 pat[11];
+	int e;
+
+	get_path(r, path, sizeof(path));
+	e = path_to_fcb(path, pat);
+	if (e < 0) {
+		ret_err(r, e == -ERR_FILE_NOT_FOUND ? ERR_FILE_NOT_FOUND : -e);
+		return;
+	}
+	find_common(r, pat, (u8)r->cx, 0);
+}
+
+static void fn_find_next(struct regs *r)
+{
+	u8 hdr[DTA_INDEX + 2];
+
+	far_copy_from(hdr, dta_seg, dta_off, sizeof(hdr));
+	find_common(r, hdr + DTA_PAT, hdr[DTA_MASK],
+		    (u16)(hdr[DTA_INDEX] | (hdr[DTA_INDEX + 1] << 8)));
+}
