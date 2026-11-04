@@ -37,3 +37,21 @@ u32 fat_cluster_lba(u16 cluster)
 {
 	return g_vol.data_lba + (u32)(cluster - 2) * g_vol.spc;
 }
+
+u16 fat_next(u16 c)
+{
+	u32 off = c + (c >> 1);
+	u16 v = (u16)(fat_tab[off] | (fat_tab[off + 1] << 8));
+
+	return (c & 1) ? (u16)(v >> 4) : (u16)(v & 0x0FFF);
+}
+
+u32 fat_free_clusters(void)
+{
+	u32 n = 0, c;
+
+	for (c = 2; c < g_vol.nclusters + 2; c++)
+		if (fat_next((u16)c) == 0)
+			n++;
+	return n;
+}
