@@ -92,3 +92,48 @@ void hal_con_cls(void)
 	ser_putc('[');
 	ser_putc('H');
 }
+
+static int bios_kbhit(void)
+{
+	u32 ax = 0x0100;
+	int avail;
+
+	asm volatile("int $0x16"
+		     : "=@ccnz"(avail), "+a"(ax)
+		     :
+		     : "ebx", "ecx", "edx", "esi", "edi", "memory");
+	return avail;
+}
+
+static int bios_getkey(void)
+{
+	u32 ax = 0x0000;
+
+	asm volatile("int $0x16"
+		     : "+a"(ax)
+		     :
+		     : "ebx", "ecx", "edx", "esi", "edi", "cc", "memory");
+	return (int)(ax & 0xFF);
+}
+
+int hal_con_kbhit(void)
+{
+	return bios_kbhit() || ser_ready();
+}
+
+int hal_con_getkey(void)
+{
+	for (;;) {
+		if (bios_kbhit())
+			return bios_getkey();
+		if (ser_ready()) {
+			int c = inb(COM1);
+
+			if (c == '\n')	/* terminals send LF for Enter */
+				c = '\r';
+			if (c == 0x7F)	/* DEL -> BS */
+				c = 0x08;
+			return c;
+		}
+	}
+}
