@@ -115,3 +115,6 @@ msg:	.asciz	"DOS40C: boot read error\r\n"
 cur_lba:	.word	0
 left:		.word	0
 retry:		.word	0
+
+	.org	510
+	.word	0xAA55
