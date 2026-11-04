@@ -121,3 +121,82 @@ static void put_num(u32 v, u32 base, int width, int zero, int left, int neg)
 	if (left)
 		pad_out(pad, ' ');
 }
+
+void kprintf(const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	for (; *fmt; fmt++) {
+		int width = 0, zero = 0, left = 0, lng = 0;
+
+		if (*fmt != '%') {
+			kputc(*fmt);
+			continue;
+		}
+		fmt++;
+		if (*fmt == '-') {
+			left = 1;
+			fmt++;
+		}
+		if (*fmt == '0') {
+			zero = 1;
+			fmt++;
+		}
+		while (*fmt >= '0' && *fmt <= '9')
+			width = width * 10 + (*fmt++ - '0');
+		if (*fmt == 'l') {
+			lng = 1;
+			fmt++;
+		}
+		switch (*fmt) {
+		case 'c':
+			kputc((char)va_arg(ap, int));
+			break;
+		case 's': {
+			const char *s = va_arg(ap, const char *);
+			int len;
+
+			if (!s)
+				s = "(null)";
+			len = (int)strlen(s);
+			if (!left)
+				pad_out(width - len, ' ');
+			kputs(s);
+			if (left)
+				pad_out(width - len, ' ');
+			break;
+		}
+		case 'd': {
+			i32 v = lng ? va_arg(ap, long) : va_arg(ap, int);
+
+			if (v < 0)
+				put_num((u32)-v, 10, width, zero, left, 1);
+			else
+				put_num((u32)v, 10, width, zero, left, 0);
+			break;
+		}
+		case 'u':
+			put_num(lng ? va_arg(ap, unsigned long)
+				    : va_arg(ap, unsigned int),
+				10, width, zero, left, 0);
+			break;
+		case 'x':
+			put_num(lng ? va_arg(ap, unsigned long)
+				    : va_arg(ap, unsigned int),
+				16, width, zero, left, 0);
+			break;
+		case '%':
+			kputc('%');
+			break;
+		default:
+			kputc('%');
+			if (*fmt)
+				kputc(*fmt);
+			else
+				fmt--;
+			break;
+		}
+	}
+	va_end(ap);
+}
