@@ -28,4 +28,17 @@
 #define ATTR_DIR     0x10
 #define ATTR_ARCHIVE 0x20
 
+
+/* ---------- ALLOC.ASM: memory arena (paragraph granularity) ---------- */
+#define MEM_FIRST_SEG 0x2000	/* user memory: 2000:0000 .. 9000:0000 */
+#define MEM_END_SEG   0x9000
+
+void mem_init(void);
+int  mem_alloc(u16 paras, u16 owner, u16 *seg, u16 *largest);
+int  mem_free(u16 seg);
+int  mem_resize(u16 seg, u16 paras, u16 *maxparas);
+void mem_free_owner(u16 owner);
+u16  mem_largest(void);
+u16  mem_total(void);
+
 #endif
