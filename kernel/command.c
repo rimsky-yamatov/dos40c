@@ -162,3 +162,48 @@ static void cmd_halt(void)
 	kputs("DOS40C: HALT\n");
 	hal_halt(0x10);			/* QEMU exit status 33 */
 }
+
+/* ---------------- running programs and batch files ---------------- */
+static int file_exists(const char *name)
+{
+	u8 fcb[11];
+	struct dirent de;
+
+	return path_to_fcb(name, fcb) == 0 && dir_find(fcb, &de) == 0;
+}
+
+static int run_batch(const char *name);
+
+/* try NAME.COM, then NAME.BAT.  Returns 1 if something was run. */
+static int run_external(const char *cmd, const char *tail)
+{
+	char path[40];
+	size_t n = strlen(cmd);
+	int has_ext = 0, i, r;
+
+	if (n > 30)
+		return 0;
+	for (i = 0; i < (int)n; i++)
+		if (cmd[i] == '.')
+			has_ext = 1;
+	memcpy(path, cmd, n + 1);
+	if (has_ext) {
+		if (!file_exists(path))
+			return 0;
+	} else {
+		memcpy(path + n, ".COM", 5);
+		if (!file_exists(path)) {
+			memcpy(path + n, ".BAT", 5);
+			if (!file_exists(path))
+				return 0;
+		}
+	}
+	if (strcmp(path + strlen(path) - 4, ".BAT") == 0) {
+		run_batch(path);
+		return 1;
+	}
+	r = dos_exec_com(path, tail);
+	if (r < 0)
+		print_error(-r);
+	return 1;
+}
