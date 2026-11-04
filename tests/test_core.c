@@ -1,4 +1,5 @@
-/* test_core.c - host tests for alloc / FAT12 / dir / handle modules */
+/* test_core.c - host tests for alloc / FAT12 / dir / handle modules.
+ * BOOT_BIN is the real build/boot.bin so the BPB is checked too. */
 #define MKFAT_NO_MAIN
 #include "../tools/mkfat.c"
 #include "../kernel/dos.h"
@@ -20,19 +21,17 @@ static void write_file(const char *p, const void *d, size_t n)
 
 static void make_fixture(void)
 {
-	static uint8_t boot[512], kern[1500], big[5000];
+	static uint8_t kern[1500], big[5000];
 	size_t i;
 
-	boot[510] = 0x55; boot[511] = 0xAA;
 	for (i = 0; i < sizeof(kern); i++) kern[i] = (uint8_t)i;
 	for (i = 0; i < sizeof(big); i++) big[i] = (uint8_t)(i * 7 + (i >> 8));
-	write_file("/tmp/t_boot.bin", boot, sizeof(boot));
 	write_file("/tmp/t_kern.bin", kern, sizeof(kern));
 	write_file("/tmp/t_big.dat", big, sizeof(big));
 	write_file("/tmp/t_small.txt", "hello\r\nworld\r\n", 14);
 	write_file("/tmp/t_empty.dat", "", 0);
 	{
-		char *a[] = { "mkfat", "/tmp/t.img", "/tmp/t_boot.bin", "/tmp/t_kern.bin",
+		char *a[] = { "mkfat", "/tmp/t.img", BOOT_BIN, "/tmp/t_kern.bin",
 			      "/tmp/t_big.dat:BIG.DAT", "/tmp/t_small.txt:readme.txt",
 			      "/tmp/t_empty.dat:EMPTY.BIN" };
 		mkfat_main(7, a);
@@ -69,12 +68,12 @@ static void test_mount(void)
 {
 	CHECK(host_disk_open("/tmp/t.img") == 0);
 	CHECK(fat_mount(0) == 0);
-	CHECK(g_vol.reserved == 3);		/* 1 boot + 2 kernel sectors */
+	CHECK(g_vol.reserved == 4);		/* 1 boot + 3 kernel sectors */
 	CHECK(g_vol.spf == 9 && g_vol.nfats == 2 && g_vol.rootents == 224);
 	CHECK(strcmp(g_vol.label, "DOS40C") == 0);
-	CHECK(g_vol.data_lba == 3 + 18 + 14);
-	CHECK(fat_free_clusters() == g_vol.nclusters - 10 - 1 - 1 + 1 - 0 + 0 - 0 + 0 ||
-	      fat_free_clusters() == g_vol.nclusters - 11);
+	CHECK(g_vol.data_lba == 4 + 18 + 14);
+	CHECK(g_vol.nclusters == 2880 - 36);
+	CHECK(fat_free_clusters() == g_vol.nclusters - 11);	/* 10 + 1 + 0 */
 }
 
 static void test_path(void)

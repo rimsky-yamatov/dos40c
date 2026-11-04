@@ -1,4 +1,4 @@
-/* dos.h - internal DOS kernel interfaces (ported from MS-DOS 4.0 DOS/*.ASM) */
+/* dos.h - internal DOS kernel interfaces (ported from the MS-DOS 4.0 DOS sources) */
 #ifndef DOS40C_DOS_H
 #define DOS40C_DOS_H
 
