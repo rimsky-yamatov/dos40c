@@ -71,3 +71,53 @@ int strcmp(const char *a, const char *b)
 	}
 	return (u8)*a - (u8)*b;
 }
+
+/* ---------------- kprintf ---------------- */
+#include <stdarg.h>
+#include "hal.h"
+
+static void kputc(char c)
+{
+	if (c == '\n')
+		hal_con_putc('\r');
+	hal_con_putc(c);
+}
+
+void kputs(const char *s)
+{
+	while (*s)
+		kputc(*s++);
+}
+
+static void pad_out(int n, char ch)
+{
+	while (n-- > 0)
+		kputc(ch);
+}
+
+static void put_num(u32 v, u32 base, int width, int zero, int left, int neg)
+{
+	char tmp[12];
+	int n = 0, total, pad;
+
+	if (v == 0)
+		tmp[n++] = '0';
+	while (v) {
+		u32 d = v % base;
+
+		tmp[n++] = (char)(d < 10 ? '0' + d : 'a' + d - 10);
+		v /= base;
+	}
+	total = n + (neg ? 1 : 0);
+	pad = width > total ? width - total : 0;
+	if (!left && !zero)
+		pad_out(pad, ' ');
+	if (neg)
+		kputc('-');
+	if (!left && zero)
+		pad_out(pad, '0');
+	while (n)
+		kputc(tmp[--n]);
+	if (left)
+		pad_out(pad, ' ');
+}
