@@ -36,3 +36,65 @@ int dir_get(u16 index, struct dirent *de)
 	de->size    = rd32(e + 28);
 	return DIR_OK;
 }
+
+static char upcase(char c)
+{
+	return (c >= 'a' && c <= 'z') ? (char)(c - 32) : c;
+}
+
+/* Parse one name component ("NAME" or "EXT") into a space padded field.
+ * '*' fills the rest of the field with '?'.  Returns 0 / -ERR_*. */
+static int parse_field(const char **pp, u8 *out, int max)
+{
+	const char *p = *pp;
+	int i = 0, star = 0;
+
+	while (*p && *p != '.' && *p != '\\' && *p != '/') {
+		char c = *p++;
+
+		if (star)
+			continue;
+		if (c == '*') {
+			while (i < max)
+				out[i++] = '?';
+			star = 1;
+			continue;
+		}
+		if (i >= max)
+			return -ERR_FILE_NOT_FOUND;
+		out[i++] = (u8)upcase(c);
+	}
+	*pp = p;
+	return 0;
+}
+
+/* "A:\NAME.EXT" -> 11 byte FCB name.  Sub-directories are not supported. */
+int path_to_fcb(const char *p, u8 fcb[11])
+{
+	int r;
+
+	memset(fcb, ' ', 11);
+	if (p[0] && p[1] == ':') {
+		if (upcase(p[0]) != 'A')
+			return -ERR_INVALID_DRIVE;
+		p += 2;
+	}
+	if (*p == '\\' || *p == '/')
+		p++;
+	if (*p == 0)
+		return -ERR_FILE_NOT_FOUND;
+	r = parse_field(&p, fcb, 8);
+	if (r)
+		return r;
+	if (*p == '.') {
+		p++;
+		r = parse_field(&p, fcb + 8, 3);
+		if (r)
+			return r;
+	}
+	if (*p == '\\' || *p == '/')
+		return -ERR_PATH_NOT_FOUND;
+	if (*p == '.')
+		return -ERR_FILE_NOT_FOUND;
+	return 0;
+}
