@@ -29,3 +29,58 @@ static void build_psp(u8 *psp, u16 seg, const char *tail)
 	memcpy(psp + 0x81, tail, len);
 	psp[0x81 + len] = 0x0D;
 }
+
+void dos_terminate(u8 code)
+{
+	g_last_ret = code;
+	if (g_cur_psp == 0)
+		return;
+	exit_to_kernel();
+}
+
+/* Load `path` as a .COM image into a fresh segment and run it.
+ * Returns the program's exit code, or a negative DOS error. */
+int dos_exec_com(const char *path, const char *tail)
+{
+	u8 psp[256];
+	u8 buf[512];
+	u16 seg, largest, off = 0x100;
+	u32 size, done = 0;
+	int h;
+
+	h = h_open(path, 0);
+	if (h < 0)
+		return h;
+	size = h_size(h);
+	if (size > COM_MAX_SIZE) {
+		h_close(h);
+		return -ERR_NO_MEMORY;
+	}
+	if (mem_alloc(COM_PARAS, 0, &seg, &largest) != 0) {
+		h_close(h);
+		return -ERR_NO_MEMORY;
+	}
+
+	build_psp(psp, seg, tail);
+	far_copy_to(seg, 0, psp, 256);
+	while (done < size) {
+		int n = h_read(h, buf, sizeof(buf));
+
+		if (n <= 0)
+			break;
+		far_copy_to(seg, off, buf, (u16)n);
+		off = (u16)(off + n);
+		done += (u32)n;
+	}
+	h_close(h);
+	h_close_user();
+
+	g_cur_psp = seg;
+	g_last_ret = 0;
+	run_com(seg);			/* returns on program termination */
+	g_cur_psp = 0;
+
+	h_close_user();
+	mem_free_owner(seg);
+	return g_last_ret;
+}
