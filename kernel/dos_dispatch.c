@@ -172,3 +172,41 @@ static void fn_read(struct regs *r)
 	r->ax = got;
 	ret_ok(r);
 }
+
+static void fn_write(struct regs *r)
+{
+	int type = h_type((int)r->bx);
+	u16 i;
+
+	if (type < 0) {
+		ret_err(r, -type);
+		return;
+	}
+	if (type == H_TYPE_NUL) {
+		r->ax = r->cx;
+		ret_ok(r);
+		return;
+	}
+	if (type != H_TYPE_CON || r->bx == 0) {	/* no writable disk files */
+		ret_err(r, ERR_ACCESS_DENIED);
+		return;
+	}
+	for (i = 0; i < r->cx; i++)
+		con_putc((char)far_rd8(r->ds, (u16)(r->dx + i)));
+	r->ax = r->cx;
+	ret_ok(r);
+}
+
+static void fn_seek(struct regs *r)
+{
+	i32 off = (i32)(((u32)r->cx << 16) | r->dx);
+	i32 np = h_seek((int)r->bx, off, AL(r));
+
+	if (np < 0) {
+		ret_err(r, (int)-np);
+		return;
+	}
+	r->dx = (u16)((u32)np >> 16);
+	r->ax = (u16)np;
+	ret_ok(r);
+}
