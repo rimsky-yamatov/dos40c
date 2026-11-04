@@ -39,3 +39,14 @@ bs_drive:
 	.long	0x40C0DE00		/* 27: volume serial         */
 	.ascii	"DOS40C     "		/* 2B: volume label          */
 	.ascii	"FAT12   "		/* 36: file system type      */
+
+boot:
+	cli
+	xorw	%ax,%ax
+	movw	%ax,%ds
+	movw	%ax,%es
+	movw	%ax,%ss
+	movw	$0x7C00,%sp
+	sti
+	cld
+	movb	%dl,bs_drive		/* remember boot drive */
