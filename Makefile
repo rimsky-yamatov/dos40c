@@ -17,8 +17,10 @@ KERNEL_C := main hal_bios lib dos_alloc dos_fat dos_dir dos_handle \
             dos_cpmio dos_exec dos_dispatch command
 KERNEL_OBJS := $(B)/entry.o $(B)/isr.o $(addprefix $(B)/,$(addsuffix .o,$(KERNEL_C)))
 
-.PHONY: all clean
-all: $(B)/boot.bin $(B)/kernel.bin
+.PHONY: all clean image
+all: image
+
+image: $(B)/dos40c.img $(B)/dos40c-test.img
 
 $(B):
 	mkdir -p $(B)
@@ -41,6 +43,39 @@ $(B)/kernel.elf: $(KERNEL_OBJS) kernel/link.ld
 $(B)/kernel.bin: $(B)/kernel.elf
 	$(OBJCOPY) -O binary $< $@
 	@echo "kernel.bin: `wc -c < $@` bytes"
+
+# ---------------- sample programs and disk images ----------------
+$(B)/hello.o: sample/hello.S | $(B)
+	$(CC) -m16 -c -o $@ $<
+
+$(B)/HELLO.COM: $(B)/hello.o
+	$(LD) -m elf_i386 -nostdlib -Ttext=0x100 --oformat binary -o $@ $<
+
+$(B)/mkfat: tools/mkfat.c | $(B)
+	$(HOSTCC) -O2 -Wall -Wextra -o $@ $<
+
+SAMPLES := $(B)/HELLO.COM sample/README.TXT
+
+# release image: boots to the prompt after AUTOEXEC.BAT
+$(B)/dos40c.img: $(B)/mkfat $(B)/boot.bin $(B)/kernel.bin $(SAMPLES) sample/AUTOEXEC.BAT
+	$(B)/mkfat $@ $(B)/boot.bin $(B)/kernel.bin $(SAMPLES) sample/AUTOEXEC.BAT
+
+# CI image: AUTOEXEC.BAT runs the self test and powers the VM off
+$(B)/dos40c-test.img: $(B)/mkfat $(B)/boot.bin $(B)/kernel.bin $(SAMPLES) sample/SELFTEST.BAT
+	$(B)/mkfat $@ $(B)/boot.bin $(B)/kernel.bin $(SAMPLES) sample/SELFTEST.BAT:AUTOEXEC.BAT
+
+# ---------------- QEMU ----------------
+QEMU ?= qemu-system-i386
+
+.PHONY: run run-serial smoke
+run: $(B)/dos40c.img
+	$(QEMU) -drive file=$<,format=raw,if=floppy -boot a
+
+run-serial: $(B)/dos40c.img
+	$(QEMU) -drive file=$<,format=raw,if=floppy -boot a -display none -serial stdio
+
+smoke: $(B)/dos40c-test.img
+	sh tools/smoke.sh $<
 
 clean:
 	rm -rf $(B)
