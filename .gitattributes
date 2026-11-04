@@ -1,0 +1,4 @@
+* text=auto
+reference/** -text
+*.ASM -text
+*.INC -text
