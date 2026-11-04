@@ -50,3 +50,42 @@ static inline u16 far_rd16(u16 seg, u16 off)
 		     : "memory");
 	return v;
 }
+
+/* kernel buffer -> seg:off */
+static inline void far_copy_to(u16 seg, u16 off, const void *src, u16 n)
+{
+	u32 d = off, s = (u32)(uintptr_t)src, c = n;
+
+	asm volatile("pushw %%es; movw %w3,%%es; cld; rep movsb; popw %%es"
+		     : "+D"(d), "+S"(s), "+c"(c)
+		     : "r"((u32)seg)
+		     : "memory");
+}
+
+/* seg:off -> kernel buffer */
+static inline void far_copy_from(void *dst, u16 seg, u16 off, u16 n)
+{
+	u32 d = (u32)(uintptr_t)dst, s = off, c = n;
+
+	asm volatile("pushw %%ds; movw %w3,%%ds; cld; rep movsb; popw %%ds"
+		     : "+D"(d), "+S"(s), "+c"(c)
+		     : "r"((u32)seg)
+		     : "memory");
+}
+
+/* ASCIIZ string at seg:off -> kernel buffer (truncating) */
+static inline void far_get_str(char *dst, u16 seg, u16 off, u16 max)
+{
+	u16 i;
+
+	for (i = 0; i + 1 < max; i++) {
+		char c = (char)far_rd8(seg, (u16)(off + i));
+
+		dst[i] = c;
+		if (!c)
+			return;
+	}
+	dst[i] = 0;
+}
+
+#endif
