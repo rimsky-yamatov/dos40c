@@ -57,3 +57,38 @@ static int ser_ready(void)
 {
 	return ser_present && (inb(COM1 + 5) & 0x01);
 }
+
+/* ---------------- console ---------------- */
+void hal_con_putc(char c)
+{
+	u32 ax = 0x0E00 | (u8)c;
+	u32 bx = 0x0007;
+
+	asm volatile("int $0x10"
+		     : "+a"(ax), "+b"(bx)
+		     :
+		     : "ecx", "edx", "esi", "edi", "cc", "memory");
+	ser_putc(c);
+}
+
+void hal_con_init(void)
+{
+	ser_init();
+}
+
+void hal_con_cls(void)
+{
+	u32 ax = 0x0003;	/* set text mode 3 = clear screen */
+
+	asm volatile("int $0x10"
+		     : "+a"(ax)
+		     :
+		     : "ebx", "ecx", "edx", "esi", "edi", "cc", "memory");
+	ser_putc(0x1B);
+	ser_putc('[');
+	ser_putc('2');
+	ser_putc('J');
+	ser_putc(0x1B);
+	ser_putc('[');
+	ser_putc('H');
+}
