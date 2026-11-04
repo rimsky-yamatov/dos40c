@@ -77,8 +77,10 @@ int dos_exec_com(const char *path, const char *tail)
 
 	g_cur_psp = seg;
 	g_last_ret = 0;
+	dos_set_dta(seg, 0x80);
 	run_com(seg);			/* returns on program termination */
 	g_cur_psp = 0;
+	dos_reset_dta();
 
 	h_close_user();
 	mem_free_owner(seg);
