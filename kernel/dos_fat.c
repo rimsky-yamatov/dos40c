@@ -98,5 +98,13 @@ int fat_mount(u8 drive)
 	g_vol.nclusters = data_secs / g_vol.spc;
 	if (g_vol.nclusters >= 4085)	/* FAT16: not supported */
 		return ERR_INVALID_DRIVE;
+
+	/* load FAT #1 into memory; FAT12 is at most 6 KB */
+	for (i = 0; i < g_vol.spf; i++) {
+		s = fat_sector(g_vol.fat_lba + i);
+		if (!s)
+			return ERR_READ_FAULT;
+		memcpy(fat_tab + (u32)i * 512, s, 512);
+	}
 	return 0;
 }
