@@ -98,3 +98,77 @@ int path_to_fcb(const char *p, u8 fcb[11])
 		return -ERR_FILE_NOT_FOUND;
 	return 0;
 }
+
+static int fcb_match(const u8 *pat, const u8 *name)
+{
+	int i;
+
+	for (i = 0; i < 11; i++)
+		if (pat[i] != '?' && pat[i] != name[i])
+			return 0;
+	return 1;
+}
+
+/* exact lookup (no volume labels) */
+int dir_find(const u8 fcb[11], struct dirent *out)
+{
+	u16 i;
+
+	for (i = 0; ; i++) {
+		int r = dir_get(i, out);
+
+		if (r == DIR_END)
+			break;
+		if (r == DIR_ERROR)
+			return -ERR_READ_FAULT;
+		if (r == DIR_OK && !(out->attr & ATTR_VOLUME) &&
+		    fcb_match(fcb, out->name))
+			return 0;
+	}
+	return -ERR_FILE_NOT_FOUND;
+}
+
+/* FindFirst/FindNext engine: continue at *index, honour attribute mask */
+int dir_search(const u8 pattern[11], u8 attrmask, u16 *index,
+	       struct dirent *out)
+{
+	u16 i;
+
+	for (i = *index; ; i++) {
+		int r = dir_get(i, out);
+
+		if (r == DIR_END)
+			break;
+		if (r == DIR_ERROR)
+			return -ERR_READ_FAULT;
+		if (r != DIR_OK)
+			continue;
+		if (out->attr & ATTR_VOLUME) {
+			if (!(attrmask & ATTR_VOLUME))
+				continue;
+		} else if ((out->attr & (ATTR_HIDDEN | ATTR_SYSTEM | ATTR_DIR))
+			   & ~attrmask) {
+			continue;
+		}
+		if (fcb_match(pattern, out->name)) {
+			*index = (u16)(i + 1);
+			return 0;
+		}
+	}
+	return -ERR_NO_MORE_FILES;
+}
+
+/* "NAME    EXT" -> "NAME.EXT" */
+void fcb_to_name(const u8 fcb[11], char out[13])
+{
+	int i, n = 0;
+
+	for (i = 0; i < 8 && fcb[i] != ' '; i++)
+		out[n++] = (char)fcb[i];
+	if (fcb[8] != ' ') {
+		out[n++] = '.';
+		for (i = 8; i < 11 && fcb[i] != ' '; i++)
+			out[n++] = (char)fcb[i];
+	}
+	out[n] = 0;
+}
