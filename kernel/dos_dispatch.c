@@ -331,3 +331,76 @@ static void fn_get_vector(struct regs *r)	/* 35h */
 	r->bx = far_rd16(0, v);
 	r->es = far_rd16(0, (u16)(v + 2));
 }
+
+/* ---------------- main dispatcher ---------------- */
+void dos_int21(void)
+{
+	struct regs *r = &g_regs;
+	u8 ah = AH(r);
+
+	ret_ok(r);
+again:
+	switch (ah) {
+	case 0x00:
+		dos_terminate(0);
+		break;
+	case 0x01: case 0x02: case 0x06: case 0x07: case 0x08: case 0x0B:
+		fn_char_io(r, ah);
+		break;
+	case 0x09: fn_print_string(r); break;
+	case 0x0A: fn_buffered_input(r); break;
+	case 0x0C:			/* flush input, then run function AL */
+		con_flush_input();
+		ah = AL(r);
+		if (ah == 0x01 || ah == 0x06 || ah == 0x07 || ah == 0x08 ||
+		    ah == 0x0A)
+			goto again;
+		break;
+	case 0x0D:			/* disk reset */
+		break;
+	case 0x0E:			/* select disk: one logical drive */
+		r->ax = (u16)((r->ax & 0xFF00) | 1);
+		break;
+	case 0x19:			/* current disk = A: */
+		r->ax &= 0xFF00;
+		break;
+	case 0x1A: dos_set_dta(r->ds, r->dx); break;
+	case 0x25: fn_set_vector(r); break;
+	case 0x2F: r->es = dta_seg; r->bx = dta_off; break;
+	case 0x30:			/* DOS version 4.00 */
+		r->ax = (u16)(DOS_VER_MAJOR | (DOS_VER_MINOR << 8));
+		r->bx = 0xFF00;		/* OEM = Microsoft */
+		r->cx = 0;
+		break;
+	case 0x33:			/* Ctrl-Break check: always off */
+		if (AL(r) == 0)
+			r->dx &= 0xFF00;
+		break;
+	case 0x35: fn_get_vector(r); break;
+	case 0x36: fn_free_space(r); break;
+	case 0x3D: fn_open(r); break;
+	case 0x3E: fn_close(r); break;
+	case 0x3F: fn_read(r); break;
+	case 0x40: fn_write(r); break;
+	case 0x42: fn_seek(r); break;
+	case 0x47:			/* current directory: always root */
+		far_wr8(r->ds, r->si, 0);
+		break;
+	case 0x48: fn_alloc(r); break;
+	case 0x49: fn_free(r); break;
+	case 0x4A: fn_resize(r); break;
+	case 0x4C: dos_terminate(AL(r)); break;
+	case 0x4D: r->ax = g_last_ret; break;
+	case 0x4E: fn_find_first(r); break;
+	case 0x4F: fn_find_next(r); break;
+	case 0x50: case 0x51: case 0x62:
+		r->bx = g_cur_psp;
+		break;
+	default:
+		if (ah >= 0x30)
+			ret_err(r, ERR_INVALID_FUNC);
+		else
+			r->ax &= 0xFF00;	/* old functions: AL = 0 */
+		break;
+	}
+}
