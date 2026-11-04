@@ -179,3 +179,12 @@ int hal_read_sector(u8 drive, u32 lba, void *buf)
 	}
 	return -1;
 }
+
+/* ---------------- machine control ---------------- */
+void hal_halt(int code)
+{
+	outb(0xF4, (u8)code);		/* QEMU isa-debug-exit (if present) */
+	outw(0x604, 0x2000);		/* QEMU ACPI power off (if present) */
+	for (;;)
+		asm volatile("cli; hlt");
+}
