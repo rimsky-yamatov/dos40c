@@ -207,3 +207,45 @@ static int run_external(const char *cmd, const char *tail)
 		print_error(-r);
 	return 1;
 }
+
+/* Execute one command line.  The line is modified in place. */
+int shell_exec_line(char *line)
+{
+	char cmd[16], *arg;
+	int n = 0;
+
+	while (*line == ' ' || *line == '\t')
+		line++;
+	if (*line == '@')
+		line++;
+	if (*line == 0 || *line == ':')
+		return 0;
+
+	while (!is_sep(line[n]) && n < (int)sizeof(cmd) - 1) {
+		cmd[n] = upper(line[n]);
+		n++;
+	}
+	cmd[n] = 0;
+	arg = line + n;
+	if (*arg == ' ' || *arg == '\t')
+		arg++;
+	/* keep a leading '/' (switch) in the argument, drop blanks */
+	while (*arg == ' ' || *arg == '\t')
+		arg++;
+
+	if (!strcmp(cmd, "REM"))		return 0;
+	if (!strcmp(cmd, "ECHO"))		cmd_echo(arg);
+	else if (!strcmp(cmd, "VER"))		cmd_ver();
+	else if (!strcmp(cmd, "DIR"))		cmd_dir(arg);
+	else if (!strcmp(cmd, "TYPE"))		cmd_type(arg);
+	else if (!strcmp(cmd, "VOL"))		cmd_vol();
+	else if (!strcmp(cmd, "MEM"))		cmd_mem();
+	else if (!strcmp(cmd, "HELP"))		cmd_help();
+	else if (!strcmp(cmd, "CLS"))		hal_con_cls();
+	else if (!strcmp(cmd, "PAUSE"))		cmd_pause();
+	else if (!strcmp(cmd, "HALT") || !strcmp(cmd, "SHUTDOWN"))
+		cmd_halt();
+	else if (!run_external(cmd, line + n))
+		kputs("Bad command or file name\n");
+	return 0;
+}
