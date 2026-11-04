@@ -126,6 +126,8 @@ extern u16 g_cur_psp;
 int  dos_exec_com(const char *path, const char *tail);
 void dos_terminate(u8 code);
 void dos_int21(void);
+void dos_set_dta(u16 seg, u16 off);
+void dos_reset_dta(void);
 
 /* assembly (isr.S) */
 void int20_entry(void);
