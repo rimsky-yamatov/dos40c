@@ -210,3 +210,40 @@ static void fn_seek(struct regs *r)
 	r->ax = (u16)np;
 	ret_ok(r);
 }
+
+/* ---- 48h/49h/4Ah: memory management ---- */
+static void fn_alloc(struct regs *r)
+{
+	u16 seg, largest;
+
+	if (mem_alloc(r->bx, g_cur_psp, &seg, &largest) != 0) {
+		r->bx = largest;
+		ret_err(r, ERR_NO_MEMORY);
+		return;
+	}
+	r->ax = seg;
+	ret_ok(r);
+}
+
+static void fn_free(struct regs *r)
+{
+	int e = mem_free(r->es);
+
+	if (e)
+		ret_err(r, e);
+	else
+		ret_ok(r);
+}
+
+static void fn_resize(struct regs *r)
+{
+	u16 maxp = 0;
+	int e = mem_resize(r->es, r->bx, &maxp);
+
+	if (e) {
+		r->bx = maxp;
+		ret_err(r, e);
+	} else {
+		ret_ok(r);
+	}
+}
