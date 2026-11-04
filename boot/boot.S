@@ -74,3 +74,22 @@ next_sector:
 	movb	%dl,%dh			/* DH = head */
 	movb	bs_drive,%dl		/* DL = drive */
 	movw	$4,retry
+
+try_read:
+	pushw	%cx
+	pushw	%dx
+	movw	$0x0201,%ax		/* read 1 sector to ES:BX */
+	int	$0x13
+	popw	%dx
+	popw	%cx
+	jnc	read_ok
+	xorw	%ax,%ax			/* reset disk system, then retry */
+	int	$0x13
+	decw	retry
+	jnz	try_read
+	jmp	fail
+read_ok:
+	addw	$512,%bx
+	incw	cur_lba
+	decw	left
+	jmp	next_sector
