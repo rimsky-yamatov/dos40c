@@ -43,3 +43,19 @@ int21_entry:
 	movl	$ISR_TOP,%esp
 	sti
 	calll	dos_int21
+
+	cli
+	/* copy the (possibly modified) frame back to the caller's stack */
+	movw	%cs:u_ss,%ax
+	movw	%ax,%es
+	movw	%cs:u_sp,%di
+	movw	$g_regs,%si
+	movw	$FRAME_WORDS,%cx
+	cld
+	rep	movsw
+	movw	%cs:u_ss,%ss
+	movw	%cs:u_sp,%sp
+	popaw
+	popw	%ds
+	popw	%es
+	iret
