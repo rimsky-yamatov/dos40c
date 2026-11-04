@@ -20,3 +20,14 @@ $(B)/boot.bin: $(B)/boot.o
 
 clean:
 	rm -rf $(B)
+
+# ---------------- host tests ----------------
+HOST_SRCS := kernel/dos_alloc.c kernel/dos_fat.c kernel/dos_dir.c \
+             kernel/dos_handle.c tests/hal_host.c tests/test_core.c
+
+$(B)/test_core: $(HOST_SRCS) | $(B)
+	$(HOSTCC) -g -O0 -Wall -Wextra -DHOST_TEST -Ikernel -o $@ $(HOST_SRCS)
+
+.PHONY: test
+test: $(B)/test_core
+	$(B)/test_core
