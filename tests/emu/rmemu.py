@@ -123,3 +123,118 @@ class CPU:
         self.IF = (v >> 9) & 1
         self.df = (v >> 10) & 1
         self.of = (v >> 11) & 1
+
+    # ---------- ModRM decoding ----------
+    def modrm(self, adsz, seg):
+        m = self.f8()
+        self.mod, self.reg, self.rm = m >> 6, (m >> 3) & 7, m & 7
+        mod, rm, r = self.mod, self.rm, self.r
+        if mod == 3:
+            return
+        if adsz == 16:
+            bx, bp, si, di = r[3] & 0xFFFF, r[5] & 0xFFFF, r[6] & 0xFFFF, r[7] & 0xFFFF
+            if mod == 0 and rm == 6:
+                off, dseg = self.f16(), 3
+            else:
+                base = (bx + si, bx + di, bp + si, bp + di, si, di, bp, bx)[rm]
+                dseg = 2 if rm in (2, 3, 6) else 3
+                disp = self.f8s() if mod == 1 else self.f16s() if mod == 2 else 0
+                off = (base + disp) & 0xFFFF
+        else:
+            dseg = 3
+            if rm == 4:
+                sib = self.f8()
+                sc, ix, bs = sib >> 6, (sib >> 3) & 7, sib & 7
+                index = 0 if ix == 4 else (r[ix] << sc)
+                nobase = bs == 5 and mod == 0
+                base = 0 if nobase else r[bs]
+                if not nobase and bs in (4, 5):
+                    dseg = 2
+            elif rm == 5 and mod == 0:
+                index, base, nobase = 0, 0, True
+            else:
+                index, base, nobase = 0, r[rm], False
+                if rm == 5:
+                    dseg = 2
+            disp = self.f8s() if mod == 1 else self.f32s() if (mod == 2 or nobase) else 0
+            off = (base + index + disp) & M32
+        self.eseg = seg if seg is not None else dseg
+        self.eoff = off
+
+    def rm_get(self, size):
+        if self.mod == 3:
+            return self.rget(self.rm, size)
+        return self.rd(self.eseg, self.eoff, size)
+
+    def rm_set(self, size, v):
+        if self.mod == 3:
+            self.rset(self.rm, size, v)
+        else:
+            self.wr(self.eseg, self.eoff, size, v)
+
+    # ---------- ALU ----------
+    def szp(self, r, size):
+        r &= (1 << size) - 1
+        self.zf = int(r == 0)
+        self.sf = (r >> (size - 1)) & 1
+        self.pf = int(PARITY[r & 0xFF])
+
+    def alu(self, op, a, b, size):
+        mask = (1 << size) - 1
+        sign = 1 << (size - 1)
+        if op in (0, 2):
+            c = self.cf if op == 2 else 0
+            r = a + b + c
+            self.cf = int(r > mask)
+            self.of = int(bool(~(a ^ b) & (a ^ r) & sign))
+            self.af = int(bool((a ^ b ^ r) & 16))
+        elif op in (3, 5, 7):
+            c = self.cf if op == 3 else 0
+            r = a - b - c
+            self.cf = int(a < b + c)
+            self.of = int(bool((a ^ b) & (a ^ r) & sign))
+            self.af = int(bool((a ^ b ^ r) & 16))
+        else:
+            r = a | b if op == 1 else a & b if op == 4 else a ^ b
+            self.cf = self.of = 0
+        r &= mask
+        self.szp(r, size)
+        return r
+
+    def cond(self, n):
+        c = n >> 1
+        v = (self.of, self.cf, self.zf, self.cf or self.zf, self.sf, self.pf,
+             self.sf != self.of, self.zf or self.sf != self.of)[c]
+        return bool(v) ^ bool(n & 1)
+
+    def shift(self, op, v, cnt, size):
+        mask = (1 << size) - 1
+        cnt &= 31
+        if cnt == 0:
+            return v
+        if op in (4, 6):
+            r = (v << cnt) & mask
+            self.cf = (v >> (size - cnt)) & 1 if cnt <= size else 0
+            self.of = ((r >> (size - 1)) & 1) ^ self.cf
+        elif op == 5:
+            r = v >> cnt
+            self.cf = (v >> (cnt - 1)) & 1
+            self.of = (v >> (size - 1)) & 1
+        elif op == 7:
+            sv = sx(v, size)
+            r = (sv >> cnt) & mask
+            self.cf = (sv >> (cnt - 1)) & 1
+            self.of = 0
+        elif op == 0:
+            cnt %= size
+            r = ((v << cnt) | (v >> (size - cnt))) & mask
+            self.cf = r & 1
+        elif op == 1:
+            cnt %= size
+            r = ((v >> cnt) | (v << (size - cnt))) & mask
+            self.cf = (r >> (size - 1)) & 1
+        else:
+            raise Fault("unsupported shift /%d" % op)
+        if op >= 4:
+            self.szp(r, size)
+        return r
