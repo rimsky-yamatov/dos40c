@@ -58,3 +58,19 @@ boot:
 	movw	$0x1000,%ax		/* load address 1000:0000 */
 	movw	%ax,%es
 	xorw	%bx,%bx
+
+next_sector:
+	cmpw	$0,left
+	je	done
+	/* LBA -> CHS */
+	movw	cur_lba,%ax
+	xorw	%dx,%dx
+	divw	bpb_spt			/* AX = track, DX = sector-1 */
+	movb	%dl,%cl
+	incb	%cl			/* CL = sector (1-based) */
+	xorw	%dx,%dx
+	divw	bpb_heads		/* AX = cylinder, DX = head */
+	movb	%al,%ch			/* CH = cylinder (floppy: < 256) */
+	movb	%dl,%dh			/* DH = head */
+	movb	bs_drive,%dl		/* DL = drive */
+	movw	$4,retry
