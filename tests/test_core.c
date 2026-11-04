@@ -38,3 +38,55 @@ static void make_fixture(void)
 		mkfat_main(7, a);
 	}
 }
+
+static void test_alloc(void)
+{
+	u16 a, b, c, big, largest;
+
+	mem_init();
+	CHECK(mem_total() == MEM_END_SEG - MEM_FIRST_SEG);
+	CHECK(mem_alloc(0x1000, 0, &a, &largest) == 0);
+	CHECK(a == MEM_FIRST_SEG);
+	CHECK(mem_alloc(0x100, 0, &b, &largest) == 0);
+	CHECK(b == a + 0x1000);
+	CHECK(mem_alloc(0x200, 0x77, &c, &largest) == 0);
+	CHECK(c == b + 0x100);
+	CHECK(mem_free(b) == 0);
+	CHECK(mem_alloc(0x80, 0, &b, &largest) == 0);	/* reuses the hole */
+	CHECK(b == a + 0x1000);
+	CHECK(mem_free(0x1234) == ERR_BAD_BLOCK);
+	CHECK(mem_alloc(0xFFFF, 0, &big, &largest) == ERR_NO_MEMORY);
+	CHECK(largest == MEM_END_SEG - (c + 0x200));
+	CHECK(mem_resize(c, 0x400, &largest) == 0);
+	CHECK(mem_resize(c, 0xF000, &largest) == ERR_NO_MEMORY);
+	mem_free_owner(0x77);
+	CHECK(mem_free(c) == ERR_BAD_BLOCK);		/* already gone */
+	mem_free_owner(a);				/* owner defaults to seg */
+	CHECK(mem_free(a) == ERR_BAD_BLOCK);
+}
+
+static void test_mount(void)
+{
+	CHECK(host_disk_open("/tmp/t.img") == 0);
+	CHECK(fat_mount(0) == 0);
+	CHECK(g_vol.reserved == 3);		/* 1 boot + 2 kernel sectors */
+	CHECK(g_vol.spf == 9 && g_vol.nfats == 2 && g_vol.rootents == 224);
+	CHECK(strcmp(g_vol.label, "DOS40C") == 0);
+	CHECK(g_vol.data_lba == 3 + 18 + 14);
+	CHECK(fat_free_clusters() == g_vol.nclusters - 10 - 1 - 1 + 1 - 0 + 0 - 0 + 0 ||
+	      fat_free_clusters() == g_vol.nclusters - 11);
+}
+
+static void test_path(void)
+{
+	u8 f[11];
+
+	CHECK(path_to_fcb("big.dat", f) == 0 && !memcmp(f, "BIG     DAT", 11));
+	CHECK(path_to_fcb("A:\\Big.Dat", f) == 0 && !memcmp(f, "BIG     DAT", 11));
+	CHECK(path_to_fcb("*.*", f) == 0 && !memcmp(f, "???????????", 11));
+	CHECK(path_to_fcb("b*.d?t", f) == 0 && !memcmp(f, "B???????D?T", 11));
+	CHECK(path_to_fcb("toolongname.x", f) < 0);
+	CHECK(path_to_fcb("sub\\x.txt", f) == -ERR_PATH_NOT_FOUND);
+	CHECK(path_to_fcb("B:x", f) == -ERR_INVALID_DRIVE);
+	CHECK(path_to_fcb("", f) < 0);
+}
