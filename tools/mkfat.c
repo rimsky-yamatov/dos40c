@@ -156,3 +156,49 @@ static void add_file(const char *spec)
 	add_dirent(n11, 0x20, first, (uint32_t)len);
 	free(data);
 }
+
+int mkfat_main(int argc, char **argv)
+{
+	size_t blen, klen;
+	uint8_t *boot, *kernel;
+	FILE *out;
+	int i;
+
+	if (argc < 4)
+		die("usage: mkfat OUT.IMG BOOT.BIN KERNEL.BIN [FILE[:NAME]]...", NULL);
+	boot = read_file(argv[2], &blen);
+	kernel = read_file(argv[3], &klen);
+	if (blen != SECTOR || boot[510] != 0x55 || boot[511] != 0xAA)
+		die("boot sector must be 512 bytes with 55AA signature", argv[2]);
+	if (klen > (size_t)MAX_KERNEL_SECS * SECTOR)
+		die("kernel too large", argv[3]);
+
+	memset(img, 0, sizeof(img));
+	reserved = 1 + (unsigned)((klen + SECTOR - 1) / SECTOR);
+	memcpy(img, boot, SECTOR);
+	put16(img + 14, reserved);			/* patch BPB reserved */
+	memcpy(img + SECTOR, kernel, klen);
+
+	fat[0] = 0xF0; fat[1] = 0xFF; fat[2] = 0xFF;	/* media + EOC */
+	add_dirent((const uint8_t *)"DOS40C     ", 0x08, 0, 0);	/* label */
+	for (i = 4; i < argc; i++)
+		add_file(argv[i]);
+
+	for (i = 0; i < NFATS; i++)
+		memcpy(img + (size_t)(reserved + i * SPF) * SECTOR, fat, sizeof(fat));
+
+	out = fopen(argv[1], "wb");
+	if (!out || fwrite(img, 1, sizeof(img), out) != sizeof(img))
+		die("cannot write", argv[1]);
+	fclose(out);
+	free(boot);
+	free(kernel);
+	return 0;
+}
+
+#ifndef MKFAT_NO_MAIN
+int main(int argc, char **argv)
+{
+	return mkfat_main(argc, argv);
+}
+#endif
