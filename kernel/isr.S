@@ -92,3 +92,26 @@ run_com:
 	xorl	%edi,%edi
 	xorl	%ebp,%ebp
 	iret
+
+/* void exit_to_kernel(void): abandon the interrupt context and make
+ * run_com() return to its caller. */
+exit_to_kernel:
+	cli
+	movw	%cs,%ax
+	movw	%ax,%ds
+	movw	%ax,%es
+	movw	%ax,%ss
+	movzwl	saved_ksp,%esp
+	popl	%edi
+	popl	%esi
+	popl	%ebx
+	popl	%ebp
+	xorl	%eax,%eax
+	cld
+	sti
+	retl
+
+	.data
+u_ss:		.word	0
+u_sp:		.word	0
+saved_ksp:	.word	0
