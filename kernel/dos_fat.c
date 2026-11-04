@@ -55,3 +55,48 @@ u32 fat_free_clusters(void)
 			n++;
 	return n;
 }
+
+/* Parse the BPB in sector 0 and load FAT #1.  Returns 0 or a DOS error. */
+int fat_mount(u8 drive)
+{
+	const u8 *s;
+	u32 root_secs, data_secs;
+	u16 i;
+
+	memset(&g_vol, 0, sizeof(g_vol));
+	sec_valid = 0;
+	g_vol.drive = drive;
+	s = fat_sector(0);
+	if (!s)
+		return ERR_READ_FAULT;
+	if (rd16(s + 510) != 0xAA55)
+		return ERR_INVALID_DRIVE;
+
+	g_vol.bps      = rd16(s + 11);
+	g_vol.spc      = s[13];
+	g_vol.reserved = rd16(s + 14);
+	g_vol.nfats    = s[16];
+	g_vol.rootents = rd16(s + 17);
+	g_vol.totsec   = rd16(s + 19) ? rd16(s + 19) : rd32(s + 32);
+	g_vol.spf      = rd16(s + 22);
+	if (g_vol.bps != 512 || g_vol.spc == 0 || g_vol.nfats == 0 ||
+	    g_vol.spf == 0 || g_vol.spf > FAT_MAX_SECTORS)
+		return ERR_INVALID_DRIVE;
+
+	hal_set_geometry(drive, rd16(s + 24), rd16(s + 26));
+	if (s[38] == 0x29)
+		memcpy(g_vol.label, s + 43, 11);
+	g_vol.label[11] = 0;
+	for (i = 10; i > 0 && g_vol.label[i] == ' '; i--)
+		g_vol.label[i] = 0;
+
+	g_vol.fat_lba  = g_vol.reserved;
+	g_vol.root_lba = g_vol.fat_lba + (u32)g_vol.nfats * g_vol.spf;
+	root_secs      = ((u32)g_vol.rootents * 32 + 511) / 512;
+	g_vol.data_lba = g_vol.root_lba + root_secs;
+	data_secs      = g_vol.totsec - g_vol.data_lba;
+	g_vol.nclusters = data_secs / g_vol.spc;
+	if (g_vol.nclusters >= 4085)	/* FAT16: not supported */
+		return ERR_INVALID_DRIVE;
+	return 0;
+}
