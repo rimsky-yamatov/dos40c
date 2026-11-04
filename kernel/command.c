@@ -249,3 +249,62 @@ int shell_exec_line(char *line)
 		kputs("Bad command or file name\n");
 	return 0;
 }
+
+/* ---------------- batch files ---------------- */
+static char batch_buf[2048];
+
+static int run_batch(const char *name)
+{
+	int h, n;
+	char *p, *end;
+
+	if (batch_depth > 0) {
+		kputs("Nested batch files are not supported\n");
+		return -1;
+	}
+	h = h_open(name, 0);
+	if (h < 0) {
+		print_error(-h);
+		return h;
+	}
+	n = h_read(h, batch_buf, sizeof(batch_buf) - 1);
+	h_close(h);
+	if (n < 0)
+		return n;
+	batch_buf[n] = 0;
+
+	batch_depth++;
+	for (p = batch_buf; *p; p = end) {
+		char *q = p;
+
+		end = p;
+		while (*end && *end != '\n')
+			end++;
+		if (*end)
+			*end++ = 0;
+		for (q = p + strlen(p); q > p && (q[-1] == '\r' || q[-1] == 0x1A); )
+			*--q = 0;
+		if (echo_on && *p != '@' && *p != 0)
+			kprintf("A:\\>%s\n", p);
+		shell_exec_line(p);
+	}
+	batch_depth--;
+	return 0;
+}
+
+/* ---------------- main loop ---------------- */
+void shell_run(void)
+{
+	static char line[130];
+
+	if (file_exists("AUTOEXEC.BAT"))
+		run_batch("AUTOEXEC.BAT");
+	for (;;) {
+		int n;
+
+		kputs("A:\\>");
+		n = con_readline(line, 128);
+		line[n] = 0;
+		shell_exec_line(line);
+	}
+}
