@@ -124,3 +124,41 @@ static void cmd_dir(const char *arg)
 	kprintf("%9s %10lu bytes free\n\n", "",
 		fat_free_clusters() * g_vol.spc * g_vol.bps);
 }
+
+static void cmd_type(const char *arg)
+{
+	char buf[128];
+	int h, n, i;
+
+	if (*arg == 0) {
+		kputs("Required parameter missing\n");
+		return;
+	}
+	h = h_open(arg, 0);
+	if (h < 0) {
+		print_error(-h);
+		return;
+	}
+	while ((n = h_read(h, buf, sizeof(buf))) > 0) {
+		for (i = 0; i < n; i++) {
+			if (buf[i] == 0x1A)		/* Ctrl-Z = EOF */
+				goto out;
+			hal_con_putc(buf[i]);
+		}
+	}
+out:
+	h_close(h);
+}
+
+static void cmd_pause(void)
+{
+	kputs("Press any key to continue . . .");
+	(void)con_getch();
+	kputs("\n");
+}
+
+static void cmd_halt(void)
+{
+	kputs("DOS40C: HALT\n");
+	hal_halt(0x10);			/* QEMU exit status 33 */
+}
