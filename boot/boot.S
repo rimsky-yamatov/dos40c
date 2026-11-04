@@ -93,3 +93,25 @@ read_ok:
 	incw	cur_lba
 	decw	left
 	jmp	next_sector
+
+done:
+	movb	bs_drive,%dl
+	ljmp	$0x1000,$0		/* enter kernel */
+
+fail:
+	movw	$msg,%si
+1:	lodsb
+	orb	%al,%al
+	jz	2f
+	movb	$0x0E,%ah
+	movw	$7,%bx
+	int	$0x10
+	jmp	1b
+2:	xorw	%ax,%ax
+	int	$0x16			/* wait for a key */
+	int	$0x19			/* retry boot */
+
+msg:	.asciz	"DOS40C: boot read error\r\n"
+cur_lba:	.word	0
+left:		.word	0
+retry:		.word	0
