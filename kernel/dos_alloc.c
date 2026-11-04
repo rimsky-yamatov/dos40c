@@ -98,3 +98,35 @@ int mem_free(u16 seg)
 	nblk--;
 	return 0;
 }
+
+int mem_resize(u16 seg, u16 paras, u16 *maxparas)
+{
+	int i = find_block(seg);
+	u16 limit;
+
+	if (i < 0)
+		return ERR_BAD_BLOCK;
+	limit = ((i + 1 < nblk) ? blk[i + 1].seg : MEM_END_SEG) - blk[i].seg;
+	if (paras > limit) {
+		if (maxparas)
+			*maxparas = limit;
+		return ERR_NO_MEMORY;
+	}
+	blk[i].paras = paras;
+	return 0;
+}
+
+void mem_free_owner(u16 owner)
+{
+	int i = 0;
+
+	while (i < nblk) {
+		if (blk[i].owner == owner) {
+			memmove(&blk[i], &blk[i + 1],
+				(nblk - i - 1) * sizeof(blk[0]));
+			nblk--;
+		} else {
+			i++;
+		}
+	}
+}
