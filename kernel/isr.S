@@ -59,3 +59,36 @@ int21_entry:
 	popw	%ds
 	popw	%es
 	iret
+
+/*
+ * void run_com(u16 seg)
+ *
+ * Start a .COM program whose PSP is at seg:0.  Returns when the program
+ * terminates (exit_to_kernel).  Callee-saved registers and the kernel
+ * stack pointer are kept on the kernel stack.
+ */
+run_com:
+	movl	4(%esp),%eax		/* seg */
+	pushl	%ebp
+	pushl	%ebx
+	pushl	%esi
+	pushl	%edi
+	movw	%sp,saved_ksp
+	movw	%ax,%bx
+	cli
+	movw	%bx,%ds
+	movw	%bx,%es
+	movw	%bx,%ss
+	movl	$0xFFFE,%esp
+	pushw	$0			/* RET at the end -> PSP:0000 = INT 20h */
+	pushw	$0x0202			/* FLAGS (IF set) */
+	pushw	%bx			/* CS */
+	pushw	$0x100			/* IP */
+	xorl	%eax,%eax
+	xorl	%ebx,%ebx
+	xorl	%ecx,%ecx
+	xorl	%edx,%edx
+	xorl	%esi,%esi
+	xorl	%edi,%edi
+	xorl	%ebp,%ebp
+	iret
