@@ -305,3 +305,29 @@ static void fn_find_next(struct regs *r)
 	find_common(r, hdr + DTA_PAT, hdr[DTA_MASK],
 		    (u16)(hdr[DTA_INDEX] | (hdr[DTA_INDEX + 1] << 8)));
 }
+
+static void fn_free_space(struct regs *r)	/* 36h */
+{
+	u32 free_c = fat_free_clusters();
+
+	r->ax = g_vol.spc;
+	r->bx = (u16)free_c;
+	r->cx = g_vol.bps;
+	r->dx = (u16)g_vol.nclusters;
+}
+
+static void fn_set_vector(struct regs *r)	/* 25h */
+{
+	u16 v = (u16)(AL(r) * 4);
+
+	far_wr16(0, v, r->dx);
+	far_wr16(0, (u16)(v + 2), r->ds);
+}
+
+static void fn_get_vector(struct regs *r)	/* 35h */
+{
+	u16 v = (u16)(AL(r) * 4);
+
+	r->bx = far_rd16(0, v);
+	r->es = far_rd16(0, (u16)(v + 2));
+}
