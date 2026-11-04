@@ -37,3 +37,49 @@ static void print_error(int e)
 	default: kprintf("DOS error %d\n", e); break;
 	}
 }
+
+/* ---------------- internal commands ---------------- */
+static void cmd_ver(void)
+{
+	kprintf("\nMS-DOS Version %d.%02d (DOS40C, C port)\n\n",
+		DOS_VER_MAJOR, DOS_VER_MINOR);
+}
+
+static void cmd_echo(const char *arg)
+{
+	if (*arg == 0)
+		kprintf("ECHO is %s\n", echo_on ? "on" : "off");
+	else if (streq_nocase(arg, "ON"))
+		echo_on = 1;
+	else if (streq_nocase(arg, "OFF"))
+		echo_on = 0;
+	else
+		kprintf("%s\n", arg);
+}
+
+static void cmd_vol(void)
+{
+	if (g_vol.label[0])
+		kprintf(" Volume in drive A is %s\n", g_vol.label);
+	else
+		kputs(" Volume in drive A has no label\n");
+}
+
+static void cmd_mem(void)
+{
+	u32 total = (u32)mem_total() * 16, large = (u32)mem_largest() * 16;
+
+	kprintf("\n%8lu bytes total user memory\n", total);
+	kprintf("%8lu bytes free (largest block)\n\n", large);
+}
+
+static void cmd_help(void)
+{
+	kputs("Internal commands:\n"
+	      "  DIR [pattern]  list files      TYPE file   show a text file\n"
+	      "  ECHO [text]    print / ON|OFF  VER         show version\n"
+	      "  VOL            volume label    MEM         memory info\n"
+	      "  CLS            clear screen    PAUSE       wait for a key\n"
+	      "  REM text       comment         HALT        power off\n"
+	      "Any NAME.COM or NAME.BAT on the disk can be run by typing NAME.\n");
+}
