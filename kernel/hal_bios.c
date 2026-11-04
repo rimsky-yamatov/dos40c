@@ -137,3 +137,45 @@ int hal_con_getkey(void)
 		}
 	}
 }
+
+/* ---------------- disk ---------------- */
+static u16 geo_spt = 18, geo_heads = 2;
+
+void hal_set_geometry(u8 drive, u16 spt, u16 heads)
+{
+	(void)drive;
+	if (spt && heads) {
+		geo_spt = spt;
+		geo_heads = heads;
+	}
+}
+
+int hal_read_sector(u8 drive, u32 lba, void *buf)
+{
+	u32 track = lba / geo_spt;
+	u32 sec   = lba % geo_spt + 1;
+	u32 head  = track % geo_heads;
+	u32 cyl   = track / geo_heads;
+	int tries;
+
+	for (tries = 0; tries < 4; tries++) {
+		u32 ax = 0x0201;
+		u32 cx = ((cyl & 0xFF) << 8) | ((cyl >> 2) & 0xC0) | sec;
+		u32 dx = (head << 8) | drive;
+		int cf;
+
+		asm volatile("int $0x13"
+			     : "=@ccc"(cf), "+a"(ax), "+c"(cx), "+d"(dx)
+			     : "b"((u32)(uintptr_t)buf)
+			     : "esi", "edi", "memory");
+		if (!cf)
+			return 0;
+		ax = 0;		/* reset controller and retry */
+		dx = drive;
+		asm volatile("int $0x13"
+			     : "+a"(ax), "+d"(dx)
+			     :
+			     : "ebx", "ecx", "esi", "edi", "cc", "memory");
+	}
+	return -1;
+}
