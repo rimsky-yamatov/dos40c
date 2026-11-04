@@ -19,3 +19,21 @@ static u32 rd32(const u8 *p)
 {
 	return (u32)rd16(p) | ((u32)rd16(p + 2) << 16);
 }
+
+/* one-sector read cache (the original used BUF.ASM for this) */
+const u8 *fat_sector(u32 lba)
+{
+	if (sec_valid && sec_lba == lba)
+		return sec_buf;
+	sec_valid = 0;
+	if (hal_read_sector(g_vol.drive, lba, sec_buf) != 0)
+		return NULL;
+	sec_lba = lba;
+	sec_valid = 1;
+	return sec_buf;
+}
+
+u32 fat_cluster_lba(u16 cluster)
+{
+	return g_vol.data_lba + (u32)(cluster - 2) * g_vol.spc;
+}
