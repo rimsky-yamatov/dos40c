@@ -94,3 +94,65 @@ void h_close_user(void)
 	for (h = H_FIRST_FILE; h < SFT_MAX; h++)
 		sft[h].used = 0;
 }
+
+/* Read up to n bytes at the current position.  Returns count or -error. */
+int h_read(int h, void *buf, u16 n)
+{
+	struct sft *f = get(h);
+	u32 csz = (u32)g_vol.spc * g_vol.bps;
+	u32 remain;
+	u16 got = 0;
+
+	if (!f || f->type != H_TYPE_FILE)
+		return -ERR_INVALID_HANDLE;
+	remain = f->de.size > f->pos ? f->de.size - f->pos : 0;
+	if (n > remain)
+		n = (u16)remain;
+
+	while (got < n) {
+		u32 cidx = f->pos / csz;
+		u32 in_c = f->pos % csz;
+		u16 c = f->de.cluster, boff, chunk;
+		u32 i, lba;
+		const u8 *s;
+
+		for (i = 0; i < cidx; i++) {
+			c = fat_next(c);
+			if (c < 2 || c >= EOC_MIN)
+				return got ? (int)got : -ERR_READ_FAULT;
+		}
+		lba = fat_cluster_lba(c) + in_c / g_vol.bps;
+		boff = (u16)(in_c % g_vol.bps);
+		s = fat_sector(lba);
+		if (!s)
+			return got ? (int)got : -ERR_READ_FAULT;
+		chunk = (u16)(g_vol.bps - boff);
+		if (chunk > (u16)(n - got))
+			chunk = (u16)(n - got);
+		memcpy((u8 *)buf + got, s + boff, chunk);
+		f->pos += chunk;
+		got = (u16)(got + chunk);
+	}
+	return got;
+}
+
+/* whence: 0 = start, 1 = current, 2 = end.  Returns new position or -error */
+i32 h_seek(int h, i32 off, u8 whence)
+{
+	struct sft *f = get(h);
+	i32 base, np;
+
+	if (!f || f->type != H_TYPE_FILE)
+		return -ERR_INVALID_HANDLE;
+	switch (whence) {
+	case 0: base = 0; break;
+	case 1: base = (i32)f->pos; break;
+	case 2: base = (i32)f->de.size; break;
+	default: return -ERR_INVALID_FUNC;
+	}
+	np = base + off;
+	if (np < 0)
+		return -ERR_INVALID_FUNC;
+	f->pos = (u32)np;
+	return np;
+}
