@@ -23,3 +23,17 @@ _kstart:
 	movl	$KSTACK_TOP,%esp
 	sti
 	cld
+
+	/* clear .bss */
+	movw	$__bss_start,%di
+	movw	$__bss_end,%cx
+	subw	%di,%cx
+	xorb	%al,%al
+	rep	stosb
+
+	movzbl	%dl,%edx		/* boot drive */
+	pushl	%edx
+	calll	kmain
+1:	cli
+	hlt
+	jmp	1b
