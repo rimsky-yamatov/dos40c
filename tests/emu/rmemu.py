@@ -238,3 +238,109 @@ class CPU:
         if op >= 4:
             self.szp(r, size)
         return r
+
+    # ---------- string instructions ----------
+    def string_op(self, b, osz, seg, rep):
+        size = 8 if b in (0xA4, 0xAA, 0xAC) else osz
+        step = (size >> 3) * (-1 if self.df else 1)
+        sseg = seg if seg is not None else 3
+        while True:
+            if rep:
+                if (self.r[1] & 0xFFFF) == 0:
+                    return
+            if b in (0xA4, 0xA5):
+                v = self.rd(sseg, self.r[6] & 0xFFFF, size)
+                self.wr(0, self.r[7] & 0xFFFF, size, v)
+                self.r[6] = (self.r[6] & 0xFFFF0000) | ((self.r[6] + step) & 0xFFFF)
+                self.r[7] = (self.r[7] & 0xFFFF0000) | ((self.r[7] + step) & 0xFFFF)
+            elif b in (0xAA, 0xAB):
+                self.wr(0, self.r[7] & 0xFFFF, size, self.rget(0, size))
+                self.r[7] = (self.r[7] & 0xFFFF0000) | ((self.r[7] + step) & 0xFFFF)
+            else:                                   # lods
+                self.rset(0, size, self.rd(sseg, self.r[6] & 0xFFFF, size))
+                self.r[6] = (self.r[6] & 0xFFFF0000) | ((self.r[6] + step) & 0xFFFF)
+            if not rep:
+                return
+            self.r[1] = (self.r[1] & 0xFFFF0000) | ((self.r[1] - 1) & 0xFFFF)
+
+    # ---------- port I/O ----------
+    def inp(self, port, size):
+        if port == 0x3F8:
+            return self.loopbyte if self.loop else 0
+        if port == 0x3FD:
+            return 0x60
+        return 0
+
+    def outp(self, port, v, size):
+        if port == 0x3FC:
+            self.loop = bool(v & 0x10)
+        elif port == 0x3F8:
+            if self.loop:
+                self.loopbyte = v & 0xFF
+            else:
+                self.serial.append(v & 0xFF)
+        elif port == 0xF4:
+            self.exit_code = v & 0xFF
+            raise Halt("isa-debug-exit")
+
+    # ---------- interrupts ----------
+    def do_int(self, n):
+        self.push(self.getfl(), 16)
+        self.push(self.sr[1], 16)
+        self.push(self.ip, 16)
+        self.IF = 0
+        a = n * 4
+        self.ip = int.from_bytes(self.mem[a:a + 2], "little")
+        self.sr[1] = int.from_bytes(self.mem[a + 2:a + 4], "little")
+
+    def do_iret(self, size):
+        self.ip = self.pop(size) & 0xFFFF
+        self.sr[1] = self.pop(size) & 0xFFFF
+        fl = self.pop(size)
+        self.setfl(fl)
+
+    def bios(self):
+        vec = self.ip >> 4
+        ah = (self.r[0] >> 8) & 0xFF
+        al = self.r[0] & 0xFF
+        if vec == 0x10:
+            if ah == 0x0E:
+                self.screen.append(al)
+            elif ah == 0x00:
+                self.screen += b"<CLS>"
+        elif vec == 0x13:
+            if ah == 0x02:
+                cl, ch, dh, dl = self.r[1] & 0xFF, (self.r[1] >> 8) & 0xFF, (self.r[2] >> 8) & 0xFF, self.r[2] & 0xFF
+                sec, cyl = cl & 0x3F, ch | ((cl & 0xC0) << 2)
+                if dl != 0 or sec == 0:
+                    self.rset(0, 16, 0x0100)
+                    self.cf = 1
+                else:
+                    lba = (cyl * 2 + dh) * 18 + sec - 1
+                    data = self.disk[lba * 512:(lba + al) * 512]
+                    a = self.lin(0, self.r[3] & 0xFFFF)
+                    self.mem[a:a + len(data)] = data
+                    self.rset(0, 16, al)
+                    self.cf = 0
+            else:
+                self.rset(0, 16, 0)
+                self.cf = 0
+        elif vec == 0x16:
+            if ah == 0x00:
+                if not self.keys:
+                    raise Halt("waiting for keyboard input")
+                self.rset(0, 16, self.keys.pop(0))
+            elif ah == 0x01:
+                if self.keys:
+                    self.rset(0, 16, self.keys[0])
+                    self.zf = 0
+                else:
+                    self.zf = 1
+        elif vec == 0x19:
+            raise Halt("BIOS reboot (INT 19h)")
+        else:
+            raise Fault("unhandled BIOS vector %#x" % vec)
+        # IRET, keeping the CF/ZF results of the service
+        cf, zf = self.cf, self.zf
+        self.do_iret(16)
+        self.cf, self.zf = cf, zf
