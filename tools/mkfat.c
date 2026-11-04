@@ -53,3 +53,38 @@ static uint8_t *read_file(const char *path, size_t *len)
 	*len = (size_t)n;
 	return buf;
 }
+
+static void fat_set(unsigned c, unsigned v)
+{
+	unsigned off = c + c / 2;
+
+	if (c & 1) {
+		fat[off]     = (uint8_t)((fat[off] & 0x0F) | ((v << 4) & 0xF0));
+		fat[off + 1] = (uint8_t)(v >> 4);
+	} else {
+		fat[off]     = (uint8_t)(v & 0xFF);
+		fat[off + 1] = (uint8_t)((fat[off + 1] & 0xF0) | ((v >> 8) & 0x0F));
+	}
+}
+
+static uint8_t *root_dir(void)
+{
+	return img + (size_t)(reserved + NFATS * SPF) * SECTOR;
+}
+
+static uint8_t *data_area(void)
+{
+	return root_dir() + ROOT_SECS * SECTOR;
+}
+
+static void put16(uint8_t *p, unsigned v)
+{
+	p[0] = (uint8_t)v;
+	p[1] = (uint8_t)(v >> 8);
+}
+
+static void put32(uint8_t *p, uint32_t v)
+{
+	put16(p, v & 0xFFFF);
+	put16(p + 2, v >> 16);
+}
