@@ -50,3 +50,51 @@ u16 mem_largest(void)
 	}
 	return best;
 }
+
+/* owner == 0 means "owned by the block itself" (used for program images) */
+int mem_alloc(u16 paras, u16 owner, u16 *seg, u16 *largest)
+{
+	int i;
+
+	if (nblk >= MAX_BLOCKS)
+		goto fail;
+	for (i = 0; i <= nblk; i++) {
+		u16 start;
+
+		if (gap_before(i, &start) >= paras) {
+			memmove(&blk[i + 1], &blk[i],
+				(nblk - i) * sizeof(blk[0]));
+			blk[i].seg = start;
+			blk[i].paras = paras;
+			blk[i].owner = owner ? owner : start;
+			nblk++;
+			*seg = start;
+			return 0;
+		}
+	}
+fail:
+	if (largest)
+		*largest = mem_largest();
+	return ERR_NO_MEMORY;
+}
+
+static int find_block(u16 seg)
+{
+	int i;
+
+	for (i = 0; i < nblk; i++)
+		if (blk[i].seg == seg)
+			return i;
+	return -1;
+}
+
+int mem_free(u16 seg)
+{
+	int i = find_block(seg);
+
+	if (i < 0)
+		return ERR_BAD_BLOCK;
+	memmove(&blk[i], &blk[i + 1], (nblk - i - 1) * sizeof(blk[0]));
+	nblk--;
+	return 0;
+}
