@@ -104,4 +104,37 @@ i32  h_seek(int h, i32 off, u8 whence);
 u32  h_size(int h);
 void h_close_user(void);
 
+/* ---------- register frame handed to the INT 21h dispatcher ---------- */
+struct regs {
+	u16 di, si, bp, sp, bx, dx, cx, ax;	/* PUSHA image */
+	u16 ds, es;
+	u16 ip, cs, flags;			/* INT frame */
+};
+extern struct regs g_regs;
+#define FLAG_CF 0x0001
+#define FLAG_ZF 0x0040
+
+/* ---------- STDCPMIO.ASM / STRIN.ASM: console ---------- */
+void con_putc(char c);
+void con_puts(const char *s);
+int  con_getch(void);
+int  con_readline(char *buf, int max);	/* returns length; buf[len] = CR */
+void con_flush_input(void);
+
+/* ---------- EXEC.ASM / ABORT.ASM: programs ---------- */
+extern u16 g_cur_psp;
+int  dos_exec_com(const char *path, const char *tail);
+void dos_terminate(u8 code);
+void dos_int21(void);
+
+/* assembly (isr.S) */
+void int20_entry(void);
+void int21_entry(void);
+void run_com(u16 seg);
+void exit_to_kernel(void) __attribute__((noreturn));
+
+/* ---------- COMMAND.COM (built in) ---------- */
+void shell_run(void);
+int  shell_exec_line(char *line);
+
 #endif
