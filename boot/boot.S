@@ -50,3 +50,11 @@ boot:
 	sti
 	cld
 	movb	%dl,bs_drive		/* remember boot drive */
+
+	movw	bpb_reserved,%ax
+	decw	%ax			/* kernel occupies reserved-1 sectors */
+	movw	%ax,left
+	movw	$1,cur_lba
+	movw	$0x1000,%ax		/* load address 1000:0000 */
+	movw	%ax,%es
+	xorw	%bx,%bx
