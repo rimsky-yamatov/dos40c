@@ -344,3 +344,210 @@ class CPU:
         cf, zf = self.cf, self.zf
         self.do_iret(16)
         self.cf, self.zf = cf, zf
+
+    # ---------- main decoder ----------
+    def step(self):
+        if self.sr[1] == 0xF000:
+            self.bios()
+            return
+        self.start_ip = self.ip
+        osz = adsz = 16
+        seg = None
+        rep = 0
+        while True:
+            b = self.f8()
+            if b == 0x66:
+                osz = 32
+            elif b == 0x67:
+                adsz = 32
+            elif b in SEGPFX:
+                seg = SEGPFX[b]
+            elif b in (0xF2, 0xF3):
+                rep = b
+            else:
+                break
+        r = self.r
+
+        if b < 0x40 and (b & 7) < 6:                      # 00-3F ALU
+            op, k = b >> 3, b & 7
+            size = 8 if k in (0, 2, 4) else osz
+            if k < 4:
+                self.modrm(adsz, seg)
+                if k < 2:
+                    res = self.alu(op, self.rm_get(size), self.rget(self.reg, size), size)
+                    if op != 7:
+                        self.rm_set(size, res)
+                else:
+                    res = self.alu(op, self.rget(self.reg, size), self.rm_get(size), size)
+                    if op != 7:
+                        self.rset(self.reg, size, res)
+            else:
+                res = self.alu(op, self.rget(0, size), self.fimm(size), size)
+                if op != 7:
+                    self.rset(0, size, res)
+        elif b in (0x06, 0x0E, 0x16, 0x1E):
+            self.push(self.sr[{0x06: 0, 0x0E: 1, 0x16: 2, 0x1E: 3}[b]], osz)
+        elif b in (0x07, 0x17, 0x1F):
+            self.sr[{0x07: 0, 0x17: 2, 0x1F: 3}[b]] = self.pop(osz) & 0xFFFF
+        elif 0x40 <= b <= 0x4F:                           # inc/dec r
+            n, cf = b & 7, self.cf
+            self.rset(n, osz, self.alu(0 if b < 0x48 else 5, self.rget(n, osz), 1, osz))
+            self.cf = cf
+        elif 0x50 <= b <= 0x57:
+            self.push(self.rget(b & 7, osz), osz)
+        elif 0x58 <= b <= 0x5F:
+            self.rset(b & 7, osz, self.pop(osz))
+        elif b == 0x60:
+            sp0 = self.rget(4, osz)
+            for n in (0, 1, 2, 3):
+                self.push(self.rget(n, osz), osz)
+            self.push(sp0, osz)
+            for n in (5, 6, 7):
+                self.push(self.rget(n, osz), osz)
+        elif b == 0x61:
+            for n in (7, 6, 5):
+                self.rset(n, osz, self.pop(osz))
+            self.pop(osz)
+            for n in (3, 2, 1, 0):
+                self.rset(n, osz, self.pop(osz))
+        elif b == 0x68:
+            self.push(self.fimm(osz), osz)
+        elif b == 0x6A:
+            self.push(self.f8s() & ((1 << osz) - 1), osz)
+        elif b in (0x69, 0x6B):
+            self.modrm(adsz, seg)
+            imm = self.fimm(osz) if b == 0x69 else self.f8s()
+            v = sx(self.rm_get(osz), osz) * sx(imm & ((1 << osz) - 1), osz)
+            self.rset(self.reg, osz, v)
+            self.cf = self.of = int(sx(v & ((1 << osz) - 1), osz) != v)
+        elif 0x70 <= b <= 0x7F:
+            d = self.f8s()
+            if self.cond(b & 15):
+                self.ip = (self.ip + d) & 0xFFFF
+        elif b in (0x80, 0x81, 0x82, 0x83):
+            size = 8 if b in (0x80, 0x82) else osz
+            self.modrm(adsz, seg)
+            imm = self.f8() if b in (0x80, 0x82) else self.fimm(osz) if b == 0x81 else self.f8s() & ((1 << osz) - 1)
+            res = self.alu(self.reg, self.rm_get(size), imm, size)
+            if self.reg != 7:
+                self.rm_set(size, res)
+        elif b in (0x84, 0x85):
+            size = 8 if b == 0x84 else osz
+            self.modrm(adsz, seg)
+            self.alu(4, self.rm_get(size), self.rget(self.reg, size), size)
+        elif b in (0x86, 0x87):
+            size = 8 if b == 0x86 else osz
+            self.modrm(adsz, seg)
+            a, c = self.rm_get(size), self.rget(self.reg, size)
+            self.rm_set(size, c)
+            self.rset(self.reg, size, a)
+        elif b in (0x88, 0x89, 0x8A, 0x8B):
+            size = 8 if b in (0x88, 0x8A) else osz
+            self.modrm(adsz, seg)
+            if b < 0x8A:
+                self.rm_set(size, self.rget(self.reg, size))
+            else:
+                self.rset(self.reg, size, self.rm_get(size))
+        elif b == 0x8C:
+            self.modrm(adsz, seg)
+            self.rm_set(16 if self.mod != 3 else osz, self.sr[self.reg])
+        elif b == 0x8D:
+            self.modrm(adsz, seg)
+            self.rset(self.reg, osz, self.eoff & ((1 << osz) - 1))
+        elif b == 0x8E:
+            self.modrm(adsz, seg)
+            self.sr[self.reg] = self.rm_get(16) & 0xFFFF
+        elif b == 0x8F:
+            self.modrm(adsz, seg)
+            self.rm_set(osz, self.pop(osz))
+        elif b == 0x90:
+            pass
+        elif b == 0x98:
+            if osz == 16:
+                self.rset(0, 16, sx(self.rget(0, 8), 8))
+            else:
+                self.rset(0, 32, sx(self.rget(0, 16), 16))
+        elif b == 0x99:
+            self.rset(2, osz, ((1 << osz) - 1) if self.rget(0, osz) >> (osz - 1) else 0)
+        elif b == 0x9C:
+            self.push(self.getfl(), osz)
+        elif b == 0x9D:
+            self.setfl(self.pop(osz))
+        elif b in (0xA0, 0xA1, 0xA2, 0xA3):
+            size = 8 if b in (0xA0, 0xA2) else osz
+            off = self.f16() if adsz == 16 else self.f32()
+            s_ = seg if seg is not None else 3
+            if b < 0xA2:
+                self.rset(0, size, self.rd(s_, off, size))
+            else:
+                self.wr(s_, off, size, self.rget(0, size))
+        elif b in (0xA4, 0xA5, 0xAA, 0xAB, 0xAC, 0xAD):
+            self.string_op(b, osz, seg, rep)
+        elif b in (0xA8, 0xA9):
+            size = 8 if b == 0xA8 else osz
+            self.alu(4, self.rget(0, size), self.fimm(size), size)
+        elif 0xB0 <= b <= 0xB7:
+            self.rset(b & 7, 8, self.f8())
+        elif 0xB8 <= b <= 0xBF:
+            self.rset(b & 7, osz, self.fimm(osz))
+        elif b in (0xC0, 0xC1, 0xD0, 0xD1, 0xD2, 0xD3):
+            size = 8 if b in (0xC0, 0xD0, 0xD2) else osz
+            self.modrm(adsz, seg)
+            cnt = self.f8() if b in (0xC0, 0xC1) else 1 if b in (0xD0, 0xD1) else self.rget(1, 8)
+            self.rm_set(size, self.shift(self.reg, self.rm_get(size), cnt, size))
+        elif b in (0xC2, 0xC3):
+            n = self.f16() if b == 0xC2 else 0
+            self.ip = self.pop(osz) & 0xFFFF
+            self.r[4] = (self.r[4] & 0xFFFF0000) | ((self.r[4] + n) & 0xFFFF)
+        elif b in (0xC6, 0xC7):
+            size = 8 if b == 0xC6 else osz
+            self.modrm(adsz, seg)
+            self.rm_set(size, self.fimm(size))
+        elif b == 0xC9:
+            self.r[4] = (self.r[4] & 0xFFFF0000) | (self.r[5] & 0xFFFF)
+            self.rset(5, osz, self.pop(osz))
+        elif b == 0xCD:
+            self.do_int(self.f8())
+        elif b == 0xCF:
+            self.do_iret(osz)
+        elif b in (0xE4, 0xE5, 0xEC, 0xED):
+            size = 8 if b in (0xE4, 0xEC) else osz
+            port = self.f8() if b < 0xE8 else self.r[2] & 0xFFFF
+            self.rset(0, size, self.inp(port, size))
+        elif b in (0xE6, 0xE7, 0xEE, 0xEF):
+            size = 8 if b in (0xE6, 0xEE) else osz
+            port = self.f8() if b < 0xE8 else self.r[2] & 0xFFFF
+            self.outp(port, self.rget(0, size), size)
+        elif b == 0xE8:
+            d = self.f16s() if osz == 16 else self.f32s()
+            self.push(self.ip, osz)
+            self.ip = (self.ip + d) & M32
+            if self.ip > 0xFFFF:
+                raise Fault("call target %#x" % self.ip)
+        elif b in (0xE9, 0xEB):
+            d = self.f8s() if b == 0xEB else self.f16s() if osz == 16 else self.f32s()
+            self.ip = (self.ip + d) & M32
+            if self.ip > 0xFFFF:
+                raise Fault("jump target %#x" % self.ip)
+        elif b == 0xEA:
+            off = self.fimm(osz)
+            self.sr[1] = self.f16()
+            self.ip = off & 0xFFFF
+        elif b == 0xF4:
+            raise Halt("hlt")
+        elif b in (0xF6, 0xF7):
+            self.group3(b, osz, adsz, seg)
+        elif b == 0xFA:
+            self.IF = 0
+        elif b == 0xFB:
+            self.IF = 1
+        elif b == 0xFC:
+            self.df = 0
+        elif b == 0xFD:
+            self.df = 1
+        elif b in (0xFE, 0xFF):
+            self.group45(b, osz, adsz, seg)
+        elif b == 0x0F:
+            self.twobyte(osz, adsz, seg)
+        else:
+            raise Fault("unsupported opcode %02x at %04x:%04x" % (b, self.sr[1], self.start_ip))
