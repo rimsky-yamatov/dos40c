@@ -83,3 +83,47 @@ static void cmd_help(void)
 	      "  REM text       comment         HALT        power off\n"
 	      "Any NAME.COM or NAME.BAT on the disk can be run by typing NAME.\n");
 }
+
+static void cmd_dir(const char *arg)
+{
+	struct dirent de;
+	u8 pat[11];
+	u16 idx = 0;
+	u32 files = 0, bytes = 0;
+	char name[13];
+	int e;
+
+	if (*arg == 0)
+		arg = "*.*";
+	e = path_to_fcb(arg, pat);
+	if (e < 0) {
+		print_error(-e);
+		return;
+	}
+	cmd_vol();
+	kputs(" Directory of  A:\\\n\n");
+	while (dir_search(pat, ATTR_HIDDEN | ATTR_SYSTEM | ATTR_DIR, &idx,
+			  &de) == 0) {
+		int n;
+
+		fcb_to_name(de.name, name);
+		kprintf("%-8s ", "");
+		/* name and extension in separate columns, like DIR */
+		for (n = 0; n < 8; n++)
+			hal_con_putc(de.name[n]);
+		hal_con_putc(' ');
+		for (n = 8; n < 11; n++)
+			hal_con_putc(de.name[n]);
+		if (de.attr & ATTR_DIR)
+			kprintf("  <DIR>     ");
+		else
+			kprintf(" %8lu   ", de.size);
+		kprintf("%2d-%02d-%02d\n", (de.date >> 5) & 15, de.date & 31,
+			(de.date >> 9) + 80);
+		files++;
+		bytes += de.size;
+	}
+	kprintf("%9lu file(s) %10lu bytes\n", files, bytes);
+	kprintf("%9s %10lu bytes free\n\n", "",
+		fat_free_clusters() * g_vol.spc * g_vol.bps);
+}
