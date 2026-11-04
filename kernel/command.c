@@ -90,7 +90,6 @@ static void cmd_dir(const char *arg)
 	u8 pat[11];
 	u16 idx = 0;
 	u32 files = 0, bytes = 0;
-	char name[13];
 	int e;
 
 	if (*arg == 0)
@@ -106,8 +105,6 @@ static void cmd_dir(const char *arg)
 			  &de) == 0) {
 		int n;
 
-		fcb_to_name(de.name, name);
-		kprintf("%-8s ", "");
 		/* name and extension in separate columns, like DIR */
 		for (n = 0; n < 8; n++)
 			hal_con_putc(de.name[n]);
