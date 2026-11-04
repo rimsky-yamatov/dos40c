@@ -291,7 +291,7 @@ static void fn_find_first(struct regs *r)
 	get_path(r, path, sizeof(path));
 	e = path_to_fcb(path, pat);
 	if (e < 0) {
-		ret_err(r, e == -ERR_FILE_NOT_FOUND ? ERR_FILE_NOT_FOUND : -e);
+		ret_err(r, -e);
 		return;
 	}
 	find_common(r, pat, (u8)r->cx, 0);
