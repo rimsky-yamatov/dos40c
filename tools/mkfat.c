@@ -88,3 +88,71 @@ static void put32(uint8_t *p, uint32_t v)
 	put16(p, v & 0xFFFF);
 	put16(p + 2, v >> 16);
 }
+
+/* "NAME.EXT" -> space padded upper-case 11 byte name */
+static void make_name(const char *src, uint8_t out[11])
+{
+	int i = 0;
+
+	memset(out, ' ', 11);
+	for (; *src && *src != '.'; src++)
+		if (i < 8)
+			out[i++] = (uint8_t)((*src >= 'a' && *src <= 'z') ? *src - 32 : *src);
+	if (*src == '.') {
+		src++;
+		for (i = 8; *src && i < 11; src++)
+			out[i++] = (uint8_t)((*src >= 'a' && *src <= 'z') ? *src - 32 : *src);
+	}
+}
+
+static void add_dirent(const uint8_t name[11], uint8_t attr, unsigned cluster,
+		       uint32_t size)
+{
+	uint8_t *e;
+
+	if (root_index >= ROOT_ENTS)
+		die("root directory full", NULL);
+	e = root_dir() + root_index++ * 32;
+	memcpy(e, name, 11);
+	e[11] = attr;
+	put16(e + 22, FIXED_TIME);
+	put16(e + 24, FIXED_DATE);
+	put16(e + 26, cluster);
+	put32(e + 28, size);
+}
+
+static void add_file(const char *spec)
+{
+	char path[512], *colon;
+	const char *name, *base;
+	uint8_t n11[11], *data;
+	size_t len, nclu, i;
+	unsigned first;
+
+	strncpy(path, spec, sizeof(path) - 1);
+	path[sizeof(path) - 1] = 0;
+	colon = strrchr(path, ':');
+	if (colon) {
+		*colon = 0;
+		name = colon + 1;
+	} else {
+		base = strrchr(path, '/');
+		name = base ? base + 1 : path;
+	}
+	data = read_file(path, &len);
+	make_name(name, n11);
+	nclu = (len + SECTOR - 1) / SECTOR;
+	if (next_cluster + nclu > TOTAL_SECS)
+		die("image full", path);
+	first = nclu ? next_cluster : 0;
+	for (i = 0; i < nclu; i++) {
+		unsigned c = next_cluster + (unsigned)i;
+
+		fat_set(c, i + 1 == nclu ? 0xFFF : c + 1);
+		memcpy(data_area() + (size_t)(c - 2) * SECTOR, data + i * SECTOR,
+		       len - i * SECTOR < SECTOR ? len - i * SECTOR : SECTOR);
+	}
+	next_cluster += (unsigned)nclu;
+	add_dirent(n11, 0x20, first, (uint32_t)len);
+	free(data);
+}
