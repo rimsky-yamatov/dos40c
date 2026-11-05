@@ -20,7 +20,8 @@ echo "----------------------"
 fail=0
 for s in "SELFTEST BEGIN" "Volume in drive A is DOS40C" "HELLO    COM" \
          "Hello from a DOS COM program!" "reports DOS major version 4" \
-         "SELFTEST END" "DOS40C: HALT"; do
+         "PASS: open/read/write/lseek/close" "PASS: findfirst/findnext" \
+         "PASS: alloc/free" "SELFTEST END" "DOS40C: HALT"; do
 	if grep -q "$s" "$LOG"; then echo "ok   $s"; else echo "FAIL $s"; fail=1; fi
 done
 [ "$rc" -eq 33 ] || { echo "FAIL unexpected qemu exit status"; fail=1; }
