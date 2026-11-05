@@ -67,7 +67,7 @@ $(B)/dos40c-test.img: $(B)/mkfat $(B)/boot.bin $(B)/kernel.bin $(SAMPLES) sample
 # ---------------- QEMU ----------------
 QEMU ?= qemu-system-i386
 
-.PHONY: run run-serial smoke
+.PHONY: run run-serial smoke emu-test
 run: $(B)/dos40c.img
 	$(QEMU) -drive file=$<,format=raw,if=floppy -boot a
 
@@ -76,6 +76,19 @@ run-serial: $(B)/dos40c.img
 
 smoke: $(B)/dos40c-test.img
 	sh tools/smoke.sh $<
+
+# QEMU-free check: boots the images in tests/emu/rmemu.py
+emu-test: $(B)/dos40c-test.img $(B)/dos40c.img
+	python3 tests/emu/run_emu.py $(B)/dos40c-test.img \
+		--expect "SELFTEST BEGIN" --expect "Volume in drive A is DOS40C" \
+		--expect "HELLO    COM" --expect "Hello from a DOS COM program!" \
+		--expect "reports DOS major version 4" --expect "SELFTEST END" \
+		--expect "DOS40C: HALT"
+	python3 tests/emu/run_emu.py $(B)/dos40c.img \
+		--keys 'VER\rDIR\rHELLO\rNOPE\rMEM\r' \
+		--expect "Welcome to DOS40C" --expect "Version 4.00" \
+		--expect "README   TXT" --expect "Hello from a DOS COM program!" \
+		--expect "Bad command or file name" --expect "bytes free"
 
 clean:
 	rm -rf $(B)
