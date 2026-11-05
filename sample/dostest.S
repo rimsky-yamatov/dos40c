@@ -40,7 +40,7 @@ _start:
 	movb	$9,%ah
 	int	$0x21
 
-	/* FindFirst *.COM then FindNext must fail with error 18 */
+	/* FindFirst HELLO.COM then FindNext must fail with error 18 */
 	movw	$pat,%dx
 	movw	$0,%cx
 	movb	$0x4E,%ah
@@ -79,7 +79,7 @@ fail:
 	int	$0x21
 
 fname:	.asciz	"README.TXT"
-pat:	.asciz	"*.COM"
+pat:	.asciz	"HELLO.COM"
 ok1:	.ascii	"PASS: open/read/write/lseek/close\r\n$"
 ok2:	.ascii	"PASS: findfirst/findnext\r\n$"
 ok3:	.ascii	"PASS: alloc/free\r\n$"

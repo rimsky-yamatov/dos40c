@@ -45,16 +45,19 @@ $(B)/kernel.bin: $(B)/kernel.elf
 	@echo "kernel.bin: `wc -c < $@` bytes"
 
 # ---------------- sample programs and disk images ----------------
-$(B)/hello.o: sample/hello.S | $(B)
+$(B)/%.o: sample/%.S | $(B)
 	$(CC) -m16 -c -o $@ $<
 
 $(B)/HELLO.COM: $(B)/hello.o
 	$(LD) -m elf_i386 -nostdlib -Ttext=0x100 --oformat binary -o $@ $<
 
+$(B)/DOSTEST.COM: $(B)/dostest.o
+	$(LD) -m elf_i386 -nostdlib -Ttext=0x100 --oformat binary -o $@ $<
+
 $(B)/mkfat: tools/mkfat.c | $(B)
 	$(HOSTCC) -O2 -Wall -Wextra -o $@ $<
 
-SAMPLES := $(B)/HELLO.COM sample/README.TXT
+SAMPLES := $(B)/HELLO.COM $(B)/DOSTEST.COM sample/README.TXT
 
 # release image: boots to the prompt after AUTOEXEC.BAT
 $(B)/dos40c.img: $(B)/mkfat $(B)/boot.bin $(B)/kernel.bin $(SAMPLES) sample/AUTOEXEC.BAT
