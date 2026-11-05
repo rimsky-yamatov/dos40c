@@ -17,10 +17,11 @@ KERNEL_C := main hal_bios lib dos_alloc dos_fat dos_dir dos_handle \
             dos_cpmio dos_exec dos_dispatch command
 KERNEL_OBJS := $(B)/entry.o $(B)/isr.o $(addprefix $(B)/,$(addsuffix .o,$(KERNEL_C)))
 
-.PHONY: all clean image
-all: image
+.PHONY: all clean image iso
+all: image iso
 
 image: $(B)/dos40c.img $(B)/dos40c-test.img
+iso: $(B)/dos40c.iso
 
 $(B):
 	mkdir -p $(B)
@@ -67,18 +68,31 @@ $(B)/dos40c.img: $(B)/mkfat $(B)/boot.bin $(B)/kernel.bin $(SAMPLES) sample/AUTO
 $(B)/dos40c-test.img: $(B)/mkfat $(B)/boot.bin $(B)/kernel.bin $(SAMPLES) sample/SELFTEST.BAT
 	$(B)/mkfat $@ $(B)/boot.bin $(B)/kernel.bin $(SAMPLES) sample/SELFTEST.BAT:AUTOEXEC.BAT
 
+# bootable CD-ROM (El Torito, floppy emulation); no external tools needed
+$(B)/dos40c.iso: $(B)/dos40c.img tools/mkiso.py sample/README.TXT
+	python3 tools/mkiso.py $@ $< sample/README.TXT
+
 # ---------------- QEMU ----------------
 QEMU ?= qemu-system-i386
 
-.PHONY: run run-serial smoke emu-test
+.PHONY: run run-iso run-serial smoke emu-test iso-test
 run: $(B)/dos40c.img
 	$(QEMU) -drive file=$<,format=raw,if=floppy -boot a
+
+run-iso: $(B)/dos40c.iso
+	$(QEMU) -cdrom $< -boot d
 
 run-serial: $(B)/dos40c.img
 	$(QEMU) -drive file=$<,format=raw,if=floppy -boot a -display none -serial stdio
 
 smoke: $(B)/dos40c-test.img
 	sh tools/smoke.sh $<
+
+# validate the ISO structure and boot the image extracted from it
+iso-test: $(B)/dos40c.iso $(B)/dos40c.img
+	python3 tests/iso_check.py $(B)/dos40c.iso $(B)/dos40c.img
+	python3 tests/emu/run_emu.py $(B)/iso_boot.img --keys 'VER\r' \
+		--expect "Welcome to DOS40C" --expect "Version 4.00"
 
 # QEMU-free check: boots the images in tests/emu/rmemu.py
 emu-test: $(B)/dos40c-test.img $(B)/dos40c.img
