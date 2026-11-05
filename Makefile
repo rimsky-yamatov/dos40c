@@ -85,7 +85,10 @@ emu-test: $(B)/dos40c-test.img $(B)/dos40c.img
 	python3 tests/emu/run_emu.py $(B)/dos40c-test.img \
 		--expect "SELFTEST BEGIN" --expect "Volume in drive A is DOS40C" \
 		--expect "HELLO    COM" --expect "Hello from a DOS COM program!" \
-		--expect "reports DOS major version 4" --expect "SELFTEST END" \
+		--expect "reports DOS major version 4" \
+		--expect "PASS: open/read/write/lseek/close" \
+		--expect "PASS: findfirst/findnext" --expect "PASS: alloc/free" \
+		--expect "SELFTEST END" \
 		--expect "DOS40C: HALT"
 	python3 tests/emu/run_emu.py $(B)/dos40c.img \
 		--keys 'VER\rDIR\rHELLO\rNOPE\rMEM\r' \
