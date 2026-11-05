@@ -46,3 +46,29 @@ jobs:
             build/dos40c.iso
             build/dos40c-test.img
             build/SHA256SUMS
+
+  smoke:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dos40c
+          path: build
+
+      - name: Install QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-system-x86
+
+      - name: Boot floppy self-test image in QEMU
+        run: sh tools/smoke.sh build/dos40c-test.img
+
+      - name: Boot the ISO in QEMU (CD-ROM, El Torito)
+        run: |
+          timeout 20 qemu-system-i386 -display none -boot d \
+            -cdrom build/dos40c.iso -serial file:build/iso-serial.log || true
+          cat build/iso-serial.log
+          grep -q "Welcome to DOS40C" build/iso-serial.log
