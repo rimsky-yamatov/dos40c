@@ -551,3 +551,135 @@ class CPU:
             self.twobyte(osz, adsz, seg)
         else:
             raise Fault("unsupported opcode %02x at %04x:%04x" % (b, self.sr[1], self.start_ip))
+
+    # ---------- groups and 0F opcodes ----------
+    def group3(self, b, osz, adsz, seg):
+        size = 8 if b == 0xF6 else osz
+        mask = (1 << size) - 1
+        self.modrm(adsz, seg)
+        op = self.reg
+        if op in (0, 1):
+            self.alu(4, self.rm_get(size), self.fimm(size), size)
+        elif op == 2:
+            self.rm_set(size, ~self.rm_get(size))
+        elif op == 3:
+            v = self.rm_get(size)
+            self.rm_set(size, self.alu(5, 0, v, size))
+            self.cf = int(v != 0)
+        else:
+            v = self.rm_get(size)
+            acc = self.rget(0, size)
+            if op in (4, 5):                         # mul / imul
+                if op == 5:
+                    p = sx(acc, size) * sx(v, size)
+                    ovf = sx(p & ((1 << (2 * size)) - 1), 2 * size) != sx(p & mask, size)
+                else:
+                    p = acc * v
+                    ovf = (p >> size) != 0
+                p &= (1 << (2 * size)) - 1
+                if size == 8:
+                    self.rset(0, 16, p)
+                else:
+                    self.rset(0, size, p & mask)
+                    self.rset(2, size, p >> size)
+                self.cf = self.of = int(ovf)
+            else:                                    # div / idiv
+                if v == 0:
+                    raise Fault("divide by zero at %04x:%04x" % (self.sr[1], self.start_ip))
+                if size == 8:
+                    n = self.rget(0, 16)
+                else:
+                    n = (self.rget(2, size) << size) | acc
+                if op == 7:
+                    n = sx(n, 2 * size)
+                    d = sx(v, size)
+                    q = abs(n) // abs(d) * (1 if (n < 0) == (d < 0) else -1)
+                    rem = n - q * d
+                else:
+                    q, rem = divmod(n, v)
+                if q >> size and op == 6:
+                    raise Fault("divide overflow")
+                if size == 8:
+                    self.rset(0, 8, q)
+                    self.rset(4, 8, rem)             # AH
+                else:
+                    self.rset(0, size, q)
+                    self.rset(2, size, rem)
+
+    def group45(self, b, osz, adsz, seg):
+        size = 8 if b == 0xFE else osz
+        self.modrm(adsz, seg)
+        op = self.reg
+        if op in (0, 1):
+            cf = self.cf
+            self.rm_set(size, self.alu(0 if op == 0 else 5, self.rm_get(size), 1, size))
+            self.cf = cf
+        elif op == 2:
+            t = self.rm_get(osz)
+            self.push(self.ip, osz)
+            self.ip = t & 0xFFFF
+        elif op == 4:
+            self.ip = self.rm_get(osz) & 0xFFFF
+        elif op == 6:
+            self.push(self.rm_get(osz), osz)
+        else:
+            raise Fault("unsupported FF /%d" % op)
+
+    def twobyte(self, osz, adsz, seg):
+        b = self.f8()
+        if b == 0xA0 or b == 0xA8:
+            self.push(self.sr[4 if b == 0xA0 else 5], osz)
+        elif b == 0xA1 or b == 0xA9:
+            self.sr[4 if b == 0xA1 else 5] = self.pop(osz) & 0xFFFF
+        elif 0x80 <= b <= 0x8F:
+            d = self.f16s() if osz == 16 else self.f32s()
+            if self.cond(b & 15):
+                self.ip = (self.ip + d) & 0xFFFF
+        elif 0x90 <= b <= 0x9F:
+            self.modrm(adsz, seg)
+            self.rm_set(8, int(self.cond(b & 15)))
+        elif 0x40 <= b <= 0x4F:
+            self.modrm(adsz, seg)
+            v = self.rm_get(osz)
+            if self.cond(b & 15):
+                self.rset(self.reg, osz, v)
+        elif b in (0xB6, 0xB7, 0xBE, 0xBF):
+            src = 8 if b in (0xB6, 0xBE) else 16
+            self.modrm(adsz, seg)
+            v = self.rm_get(src)
+            if b >= 0xBE:
+                v = sx(v, src)
+            self.rset(self.reg, osz, v & ((1 << osz) - 1))
+        elif b == 0xAF:
+            self.modrm(adsz, seg)
+            v = sx(self.rget(self.reg, osz), osz) * sx(self.rm_get(osz), osz)
+            self.rset(self.reg, osz, v)
+            self.cf = self.of = int(sx(v & ((1 << osz) - 1), osz) != v)
+        elif b == 0xA3:
+            self.modrm(adsz, seg)
+            bit = self.rget(self.reg, osz)
+            if self.mod != 3:
+                self.eoff = (self.eoff + (sx(bit, osz) >> 5) * 4) & M32 if osz == 32 else self.eoff
+            self.cf = (self.rm_get(osz) >> (bit % osz)) & 1
+        else:
+            raise Fault("unsupported opcode 0f %02x at %04x:%04x" % (b, self.sr[1], self.start_ip))
+
+
+def run(image_path, keys=b"", max_instr=40_000_000):
+    disk = open(image_path, "rb").read()
+    cpu = CPU(disk, keys)
+    cpu.mem[0x7C00:0x7E00] = disk[:512]
+    cpu.sr[1] = 0
+    cpu.ip = 0x7C00
+    cpu.r[4] = 0x7C00
+    reason = None
+    try:
+        while cpu.icount < max_instr:
+            cpu.icount += 1
+            cpu.step()
+        reason = "instruction limit"
+    except Halt as e:
+        reason = str(e)
+    except Fault as e:
+        reason = "FAULT: %s" % e
+    return cpu, reason
