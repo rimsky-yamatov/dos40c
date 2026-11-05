@@ -17,8 +17,8 @@ KERNEL_C := main hal_bios lib dos_alloc dos_fat dos_dir dos_handle \
             dos_cpmio dos_exec dos_dispatch command
 KERNEL_OBJS := $(B)/entry.o $(B)/isr.o $(addprefix $(B)/,$(addsuffix .o,$(KERNEL_C)))
 
-.PHONY: all clean image iso
-all: image iso
+.PHONY: all clean image iso dist
+all: image iso dist
 
 image: $(B)/dos40c.img $(B)/dos40c-test.img
 iso: $(B)/dos40c.iso
@@ -71,6 +71,12 @@ $(B)/dos40c-test.img: $(B)/mkfat $(B)/boot.bin $(B)/kernel.bin $(SAMPLES) sample
 # bootable CD-ROM (El Torito, floppy emulation); no external tools needed
 $(B)/dos40c.iso: $(B)/dos40c.img tools/mkiso.py sample/README.TXT
 	python3 tools/mkiso.py $@ $< sample/README.TXT
+
+# release bundle: ISO + floppy image + checksums in one zip
+dist: $(B)/dos40c.zip
+$(B)/dos40c.zip: $(B)/dos40c.iso $(B)/dos40c.img README.md LICENSE
+	cd $(B) && sha256sum dos40c.img dos40c.iso > SHA256SUMS
+	python3 tools/mkzip.py $@ $(B)/dos40c.iso $(B)/dos40c.img $(B)/SHA256SUMS README.md LICENSE
 
 # ---------------- QEMU ----------------
 QEMU ?= qemu-system-i386
