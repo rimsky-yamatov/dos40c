@@ -54,3 +54,65 @@ def dirrec(name, lba, size, is_dir=False):
         r += b"\0"
     assert len(r) == length
     return bytes(r)
+
+
+def volume_descriptor(total_sectors, root_lba, root_size, ptable_size, ptl, ptm):
+    v = bytearray(SEC)
+    v[0] = 1
+    v[1:6] = b"CD001"
+    v[6] = 1
+    v[8:40] = pad(b"DOS40C", 32)                  # system id
+    v[40:72] = pad(VOLID.encode(), 32)            # volume id
+    v[80:88] = both32(total_sectors)
+    v[120:124] = both16(1)                        # volume set size
+    v[124:128] = both16(1)                        # sequence number
+    v[128:132] = both16(SEC)                      # logical block size
+    v[132:140] = both32(ptable_size)
+    v[140:144] = struct.pack("<I", ptl)
+    v[148:152] = struct.pack(">I", ptm)
+    v[156:190] = dirrec(b"\0", root_lba, root_size, True)
+    v[190:318] = pad(b"", 128)                    # volume set id
+    v[318:446] = pad(b"DOS40C PORT", 128)         # publisher
+    v[446:574] = pad(b"mkiso.py", 128)            # data preparer
+    v[574:702] = pad(b"mkiso.py", 128)            # application
+    for off in (813, 830):                        # creation, modification
+        v[off:off + 17] = ltime()
+    v[847:864] = b"0" * 16 + b"\0"                # expiration: unset
+    v[864:881] = b"0" * 16 + b"\0"                # effective
+    v[881] = 1
+    return bytes(v)
+
+
+def boot_record(catalog_lba):
+    v = bytearray(SEC)
+    v[0] = 0
+    v[1:6] = b"CD001"
+    v[6] = 1
+    v[7:39] = pad(b"EL TORITO SPECIFICATION", 32, b"\0")
+    v[71:75] = struct.pack("<I", catalog_lba)
+    return bytes(v)
+
+
+def terminator():
+    v = bytearray(SEC)
+    v[0] = 255
+    v[1:6] = b"CD001"
+    v[6] = 1
+    return bytes(v)
+
+
+def boot_catalog(image_lba):
+    c = bytearray(SEC)
+    c[0] = 1                                      # header id
+    c[1] = 0                                      # platform: 80x86
+    c[4:28] = pad(b"DOS40C", 24, b"\0")
+    c[30], c[31] = 0x55, 0xAA
+    csum = (-sum(struct.unpack("<16H", bytes(c[:32])))) & 0xFFFF
+    c[28:30] = struct.pack("<H", csum)
+    c[32] = 0x88                                  # bootable
+    c[33] = 2                                     # 1.44MB floppy emulation
+    c[34:36] = struct.pack("<H", 0)               # load segment (default 07C0)
+    c[36] = 0                                     # system type
+    c[38:40] = struct.pack("<H", 1)               # sector count
+    c[40:44] = struct.pack("<I", image_lba)
+    return bytes(c)
