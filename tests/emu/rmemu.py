@@ -335,7 +335,7 @@ class CPU:
                     self.rset(0, 16, self.keys[0])
                     self.zf = 0
                 else:
-                    self.zf = 1
+                    raise Halt("waiting for keyboard input")
         elif vec == 0x19:
             raise Halt("BIOS reboot (INT 19h)")
         else:
