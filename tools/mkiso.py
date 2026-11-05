@@ -116,3 +116,64 @@ def boot_catalog(image_lba):
     c[38:40] = struct.pack("<H", 1)               # sector count
     c[40:44] = struct.pack("<I", image_lba)
     return bytes(c)
+
+
+def iso_name(path):
+    base = os.path.basename(path).upper()
+    if "." not in base:
+        base += "."
+    return (base + ";1").replace(" ", "_")
+
+
+def build(out, floppy, extras):
+    files = [("DOS40C.IMG;1", open(floppy, "rb").read())]
+    for p in extras:
+        files.append((iso_name(p), open(p, "rb").read()))
+    files.sort(key=lambda f: f[0])
+
+    # fixed layout: 16 PVD, 17 boot record, 18 terminator, 19/20 path
+    # tables, 21 root directory, 22 boot catalog, 23.. file data
+    lba_root, lba_cat, lba = 21, 22, 23
+    placed = []
+    for name, data in files:
+        placed.append((name, lba, data))
+        lba += (len(data) + SEC - 1) // SEC
+    total = lba
+    image_lba = next(l for n, l, _ in placed if n == "DOS40C.IMG;1")
+
+    root = bytearray()
+    root += dirrec(b"\0", lba_root, SEC, True)
+    root += dirrec(b"\1", lba_root, SEC, True)
+    for name, l, data in placed:
+        root += dirrec(name, l, len(data))
+    assert len(root) <= SEC, "too many files for a single directory sector"
+    root = bytes(root).ljust(SEC, b"\0")
+
+    ptl = struct.pack("<BBIH", 1, 0, lba_root, 1) + b"\0" + b"\0"
+    ptm = struct.pack(">BBIH", 1, 0, lba_root, 1) + b"\0" + b"\0"
+    ptsize = len(ptl)
+
+    img = bytearray(total * SEC)
+
+    def put(lba_, data):
+        img[lba_ * SEC:lba_ * SEC + len(data)] = data
+
+    put(16, volume_descriptor(total, lba_root, SEC, ptsize, 19, 20))
+    put(17, boot_record(lba_cat))
+    put(18, terminator())
+    put(19, ptl)
+    put(20, ptm)
+    put(lba_root, root)
+    put(lba_cat, boot_catalog(image_lba))
+    for _, l, data in placed:
+        put(l, data)
+    with open(out, "wb") as f:
+        f.write(img)
+    return total
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 3:
+        sys.exit(__doc__)
+    n = build(sys.argv[1], sys.argv[2], sys.argv[3:])
+    print("%s: %d sectors (%d bytes)" % (sys.argv[1], n, n * SEC))
