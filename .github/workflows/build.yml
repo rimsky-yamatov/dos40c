@@ -72,3 +72,45 @@ jobs:
             -cdrom build/dos40c.iso -serial file:build/iso-serial.log || true
           cat build/iso-serial.log
           grep -q "Welcome to DOS40C" build/iso-serial.log
+
+  release:
+    # one release per successful build; the smoke result is recorded in the
+    # release notes (a failed smoke test marks the release as pre-release)
+    needs: [build, smoke]
+    if: ${{ always() && needs.build.result == 'success' && github.event_name != 'pull_request' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dos40c
+          path: dist
+
+      - name: Compose release notes
+        run: |
+          {
+            echo "Automated build of commit \`${GITHUB_SHA::7}\` (run #${GITHUB_RUN_NUMBER})."
+            echo
+            echo "- QEMU smoke test: **${{ needs.smoke.result }}**"
+            echo "- \`dos40c.img\` - 1.44MB bootable floppy image"
+            echo "- \`dos40c.iso\` - bootable CD-ROM image (El Torito floppy emulation)"
+            echo
+            echo "Try it: \`qemu-system-i386 -drive file=dos40c.img,format=raw,if=floppy -boot a\`"
+            echo
+            echo '```'
+            cat dist/SHA256SUMS
+            echo '```'
+          } > notes.md
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v4.0.${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: DOS40C 4.0.${{ github.run_number }}
+          body_path: notes.md
+          prerelease: ${{ needs.smoke.result != 'success' }}
+          files: |
+            dist/dos40c.img
+            dist/dos40c.iso
+            dist/SHA256SUMS
