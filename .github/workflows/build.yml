@@ -32,11 +32,10 @@ jobs:
       - name: ISO structure test
         run: make iso-test
 
-      - name: Checksums
+      - name: Package (ISO + floppy + checksums in one zip)
         run: |
-          cd build
-          sha256sum dos40c.img dos40c.iso > SHA256SUMS
-          cat SHA256SUMS
+          ls -l build/dos40c.zip
+          cat build/SHA256SUMS
 
       - uses: actions/upload-artifact@v4
         with:
@@ -44,6 +43,7 @@ jobs:
           path: |
             build/dos40c.img
             build/dos40c.iso
+            build/dos40c.zip
             build/dos40c-test.img
             build/SHA256SUMS
 
@@ -95,6 +95,7 @@ jobs:
             echo "- QEMU smoke test: **${{ needs.smoke.result }}**"
             echo "- \`dos40c.img\` - 1.44MB bootable floppy image"
             echo "- \`dos40c.iso\` - bootable CD-ROM image (El Torito floppy emulation)"
+            echo "- \`dos40c.zip\` - both images + checksums + README"
             echo
             echo "Try it: \`qemu-system-i386 -drive file=dos40c.img,format=raw,if=floppy -boot a\`"
             echo
@@ -113,4 +114,5 @@ jobs:
           files: |
             dist/dos40c.img
             dist/dos40c.iso
+            dist/dos40c.zip
             dist/SHA256SUMS

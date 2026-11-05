@@ -36,7 +36,7 @@ make run-serial # ウィンドウ無し。端末がそのまま DOS のコンソ
 ## CI / リリース
 
 `.github/workflows/build.yml`: build → (QEMU smoke) → **ビルド成功ごとにリリース作成**
-(`v4.0.<run番号>`, `dos40c.img` / `dos40c.iso` / `SHA256SUMS`)。smoke が失敗した場合は
+(`v4.0.<run番号>`, `dos40c.zip`(ISO+IMG+SHA256SUMS) / `dos40c.iso` / `dos40c.img` / `SHA256SUMS`。ISO は workflow が自動生成)。smoke が失敗した場合は
 pre-release として公開されます。
 
 ## 構成
